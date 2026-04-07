@@ -1,8 +1,7 @@
-# app.py - Complete HenAi Flask Application with Multiple Self-Ping Methods
+# app.py - HTTP Voice Version (Faster, No WebSocket Issues)
 
 from flask import Flask, render_template, request, jsonify, session
 from flask_cors import CORS
-from flask_socketio import SocketIO, emit
 import os
 import json
 import base64
@@ -11,6 +10,9 @@ import requests
 import time
 import logging
 from datetime import datetime
+import tempfile
+import io
+
 from models import (
     query_ai_with_fallback, 
     is_code_generation_request,
@@ -27,7 +29,6 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'henai-japanese-learning-secret-key')
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Store conversation history per session
 conversations = {}
@@ -35,201 +36,58 @@ conversations = {}
 # Track when the app started
 START_TIME = time.time()
 
-# ============= MULTIPLE SELF-PING METHODS =============
+# Cache for TTS audio to reduce generation time
+tts_cache = {}
 
-class MultiPinger:
-    """Multiple redundant self-ping methods to keep the app alive"""
+# ============= SELF-PINGER (Keeps App Awake) =============
+
+class SelfPinger:
+    """Self-ping to keep Render app alive"""
     
     def __init__(self):
         self.running = False
         self.ping_count = 0
-        self.success_count = 0
-        self.fail_count = 0
         self.app_url = os.environ.get('RENDER_EXTERNAL_URL', 'http://localhost:5000')
-        
-    def log_status(self, method, success):
-        """Log ping status"""
-        self.ping_count += 1
-        if success:
-            self.success_count += 1
-            logger.info(f"[PING] {method} - SUCCESS (Total: {self.success_count}/{self.ping_count})")
-        else:
-            self.fail_count += 1
-            logger.warning(f"[PING] {method} - FAILED (Total: {self.fail_count}/{self.ping_count})")
-    
-    # Method 1: Internal localhost ping
-    def ping_localhost(self):
-        """Ping via localhost - fastest and most reliable"""
-        try:
-            response = requests.get('http://localhost:5000/api/ping', timeout=5)
-            if response.status_code == 200:
-                self.log_status("localhost", True)
-                return True
-        except Exception as e:
-            self.log_status("localhost", False)
-        return False
-    
-    # Method 2: Ping via external URL (if available)
-    def ping_external(self):
-        """Ping via external Render URL"""
-        if self.app_url and 'localhost' not in self.app_url:
-            try:
-                response = requests.get(f'{self.app_url}/api/ping', timeout=10)
-                if response.status_code == 200:
-                    self.log_status("external", True)
-                    return True
-            except Exception as e:
-                self.log_status("external", False)
-        return False
-    
-    # Method 3: Simulate user request (keeps session alive)
-    def simulate_user_request(self):
-        """Simulate a lightweight user request"""
-        try:
-            # Make a lightweight request to a public endpoint
-            response = requests.get('http://localhost:5000/api/status', timeout=5)
-            if response.status_code == 200:
-                self.log_status("simulated_user", True)
-                return True
-        except Exception as e:
-            self.log_status("simulated_user", False)
-        return False
-    
-    # Method 4: Database-style keepalive (touches conversation storage)
-    def touch_conversations(self):
-        """Touch the conversations dict to keep it 'active'"""
-        try:
-            # Just read and write a dummy entry to keep things active
-            temp_key = f"_keepalive_{int(time.time())}"
-            conversations[temp_key] = [{'role': 'system', 'content': 'keepalive', 'timestamp': datetime.now().isoformat()}]
-            # Remove it immediately
-            if temp_key in conversations:
-                del conversations[temp_key]
-            self.log_status("storage_touch", True)
-            return True
-        except Exception as e:
-            self.log_status("storage_touch", False)
-        return False
-    
-    # Method 5: SocketIO self-emit (for WebSocket keepalive)
-    def emit_socket_ping(self):
-        """Emit a socketio event to keep websocket alive"""
-        try:
-            # This keeps the SocketIO connection thinking there's activity
-            socketio.emit('ping', {'data': 'keepalive'}, namespace='/', broadcast=True)
-            self.log_status("socket_emit", True)
-            return True
-        except Exception as e:
-            self.log_status("socket_emit", False)
-        return False
-    
-    def run_all_pings(self):
-        """Execute all ping methods"""
-        results = []
-        
-        # Method 1: Localhost
-        results.append(self.ping_localhost())
-        
-        # Method 2: External
-        results.append(self.ping_external())
-        
-        # Method 3: Simulated user
-        results.append(self.simulate_user_request())
-        
-        # Method 4: Storage touch
-        results.append(self.touch_conversations())
-        
-        # Method 5: Socket emit (only if SocketIO is active)
-        # Uncomment if you have active socket connections
-        # results.append(self.emit_socket_ping())
-        
-        # Overall success if at least one method worked
-        overall_success = any(results)
-        
-        if overall_success:
-            logger.info(f"[KEEPALIVE] ✓ App kept alive - {time.ctime()}")
-        else:
-            logger.error(f"[KEEPALIVE] ✗ ALL PING METHODS FAILED! - {time.ctime()}")
-        
-        return overall_success
     
     def start(self):
-        """Start the multi-pinger in a background thread"""
+        """Start the pinger"""
         if self.running:
-            logger.warning("Multi-pinger already running")
             return
         
         self.running = True
         
         def pinger_loop():
-            logger.info("🚀 Multi-pinger started with 5 redundant methods")
+            logger.info("🚀 Self-pinger started (every 8 minutes)")
             while self.running:
+                time.sleep(480)  # 8 minutes
                 try:
-                    # Wait 8 minutes (shorter than Render's 15-minute timeout)
-                    for _ in range(480):  # 8 minutes = 480 seconds
-                        if not self.running:
-                            break
-                        time.sleep(1)
-                    
-                    if self.running:
-                        self.run_all_pings()
-                        
+                    response = requests.get(f'{self.app_url}/api/ping', timeout=10)
+                    self.ping_count += 1
+                    logger.info(f"[Keep-Alive] Ping #{self.ping_count} - Status: {response.status_code}")
                 except Exception as e:
-                    logger.error(f"Multi-pinger error: {e}")
-                    time.sleep(60)  # Wait a minute before retrying
+                    logger.warning(f"[Keep-Alive] Ping failed: {e}")
         
         self.thread = threading.Thread(target=pinger_loop, daemon=True)
         self.thread.start()
     
     def stop(self):
-        """Stop the multi-pinger"""
         self.running = False
-        logger.info("Multi-pinger stopped")
-    
-    def get_stats(self):
-        """Get ping statistics"""
-        return {
-            'total_pings': self.ping_count,
-            'successful_pings': self.success_count,
-            'failed_pings': self.fail_count,
-            'success_rate': (self.success_count / self.ping_count * 100) if self.ping_count > 0 else 0
-        }
 
-# Create global pinger instance
-pinger = MultiPinger()
+pinger = SelfPinger()
 
-# ============= KEEP-ALIVE ENDPOINTS =============
+# ============= ENDPOINTS =============
 
 @app.route('/api/ping')
-def ping_endpoint():
-    """Simple ping endpoint for keep-alive checks"""
-    return jsonify({
-        'status': 'alive',
-        'timestamp': datetime.now().isoformat(),
-        'uptime_seconds': int(time.time() - START_TIME),
-        'message': 'HenAi is running smoothly!'
-    })
+def ping():
+    return jsonify({'status': 'alive', 'timestamp': datetime.now().isoformat()})
 
 @app.route('/api/status')
-def status_endpoint():
-    """Status endpoint with ping statistics"""
+def status():
     return jsonify({
         'status': 'running',
         'uptime_seconds': int(time.time() - START_TIME),
-        'uptime_hours': round((time.time() - START_TIME) / 3600, 2),
-        'ping_stats': pinger.get_stats(),
-        'timestamp': datetime.now().isoformat()
+        'ping_count': pinger.ping_count
     })
-
-@app.route('/api/health')
-def health_endpoint():
-    """Health check endpoint for Render"""
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.now().isoformat()
-    }), 200
-
-# ============= CHAT ENDPOINTS =============
 
 @app.route('/')
 def index():
@@ -274,9 +132,9 @@ def chat():
         'timestamp': datetime.now().isoformat()
     })
     
-    # Keep only last 50 messages
-    if len(conversations[session_id]) > 50:
-        conversations[session_id] = conversations[session_id][-50:]
+    # Keep only last 30 messages to save memory
+    if len(conversations[session_id]) > 30:
+        conversations[session_id] = conversations[session_id][-30:]
     
     return jsonify({
         'response': response_text,
@@ -299,50 +157,74 @@ def translate():
 
 @app.route('/api/tts', methods=['POST'])
 def tts():
+    """Text to Speech - with caching for speed"""
     data = request.json
     text = data.get('text', '')
     if not text:
         return jsonify({'error': 'No text provided'}), 400
     
+    # Check cache first (faster)
+    text_hash = hash(text)
+    if text_hash in tts_cache:
+        return jsonify({
+            'audio': tts_cache[text_hash],
+            'format': 'audio/mp3',
+            'cached': True
+        })
+    
+    # Generate new TTS
     audio_data = text_to_speech_japanese(text)
     if audio_data:
+        audio_base64 = base64.b64encode(audio_data).decode('utf-8')
+        # Cache for future use (limit cache size)
+        if len(tts_cache) < 100:
+            tts_cache[text_hash] = audio_base64
         return jsonify({
-            'audio': base64.b64encode(audio_data).decode('utf-8'),
-            'format': 'audio/mp3'
+            'audio': audio_base64,
+            'format': 'audio/mp3',
+            'cached': False
         })
     else:
         return jsonify({'error': 'TTS failed'}), 500
 
-@socketio.on('voice_input')
-def handle_voice_input(data):
-    audio_bytes = base64.b64decode(data['audio'])
+@app.route('/api/voice', methods=['POST'])
+def voice():
+    """HTTP endpoint for voice input - faster than WebSocket"""
+    if 'audio' not in request.files:
+        return jsonify({'error': 'No audio file provided'}), 400
+    
+    audio_file = request.files['audio']
+    mode = request.form.get('mode', 'japanese')
+    
+    # Read audio bytes
+    audio_bytes = audio_file.read()
+    
+    # Convert speech to text
     text, detected_lang = speech_to_text_japanese(audio_bytes)
     
-    if text:
-        emit('voice_result', {
-            'text': text,
-            'detected_language': detected_lang,
-            'success': True
-        })
-        
-        if data.get('mode') == 'japanese':
-            response = get_japanese_response(text)
-            emit('voice_response', {
-                'response': response,
-                'success': True
-            })
-            
-            audio_response = text_to_speech_japanese(response)
-            if audio_response:
-                emit('voice_audio', {
-                    'audio': base64.b64encode(audio_response).decode('utf-8'),
-                    'success': True
-                })
-    else:
-        emit('voice_result', {
+    if not text:
+        return jsonify({
             'success': False,
             'error': 'Could not recognize speech'
-        })
+        }), 400
+    
+    result = {
+        'success': True,
+        'text': text,
+        'detected_language': detected_lang
+    }
+    
+    # If in Japanese mode, get AI response
+    if mode == 'japanese':
+        response_text = get_japanese_response(text)
+        result['response'] = response_text
+        
+        # Generate TTS for response (fast)
+        audio_data = text_to_speech_japanese(response_text)
+        if audio_data:
+            result['response_audio'] = base64.b64encode(audio_data).decode('utf-8')
+    
+    return jsonify(result)
 
 @app.route('/api/clear', methods=['POST'])
 def clear_conversation():
@@ -355,15 +237,18 @@ def clear_conversation():
 # ============= START APPLICATION =============
 
 if __name__ == '__main__':
-    # Get port from environment (Render sets this automatically)
     port = int(os.environ.get('PORT', 5000))
     
-    # Start the multi-pinger
+    # Start the self-pinger
     pinger.start()
     
     logger.info(f"🚀 HenAi Server starting on port {port}")
-    logger.info(f"📡 Multi-pinger active with 5 redundant methods")
-    logger.info(f"⏰ Ping interval: 8 minutes (Render timeout is 15 minutes)")
+    logger.info(f"📡 HTTP Voice API enabled (faster than WebSocket)")
+    logger.info(f"💾 TTS Cache enabled for faster responses")
     
-    # Run the app
-    socketio.run(app, host='0.0.0.0', port=port, debug=False)
+    # Use waitress for production (faster than Flask dev server)
+    try:
+        from waitress import serve
+        serve(app, host='0.0.0.0', port=port, threads=4)
+    except ImportError:
+        app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
