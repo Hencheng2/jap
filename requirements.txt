@@ -7,5 +7,5 @@ gTTS
 SpeechRecognition
 pydub
 eventlet
-#gunicorn
+gunicorn
 eventlet
