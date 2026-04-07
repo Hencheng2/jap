@@ -21,7 +21,6 @@
             padding: 20px;
         }
 
-        /* Main Container */
         .app-container {
             width: 100%;
             max-width: 1400px;
@@ -35,7 +34,6 @@
             flex-direction: column;
         }
 
-        /* Header */
         .header {
             padding: 20px 28px;
             background: rgba(0, 0, 0, 0.3);
@@ -80,7 +78,6 @@
             margin-left: 8px;
         }
 
-        /* Mode Toggle */
         .mode-toggle {
             display: flex;
             background: rgba(0, 0, 0, 0.4);
@@ -113,7 +110,6 @@
             color: white;
         }
 
-        /* Japanese mode indicator */
         .japanese-badge {
             background: rgba(255, 107, 0, 0.2);
             padding: 6px 14px;
@@ -122,7 +118,6 @@
             border-left: 2px solid #ff6a00;
         }
 
-        /* Main Chat Area */
         .chat-area {
             flex: 1;
             overflow-y: auto;
@@ -132,7 +127,6 @@
             gap: 16px;
         }
 
-        /* Custom Scrollbar */
         .chat-area::-webkit-scrollbar {
             width: 6px;
         }
@@ -147,7 +141,6 @@
             border-radius: 10px;
         }
 
-        /* Message Bubbles */
         .message {
             display: flex;
             gap: 14px;
@@ -200,6 +193,7 @@
             border-radius: 24px;
             line-height: 1.5;
             font-size: 0.95rem;
+            position: relative;
         }
 
         .user .bubble {
@@ -214,9 +208,28 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
             color: #e0e0e0;
             border-bottom-left-radius: 6px;
+            padding-right: 45px;
         }
 
-        /* Input Area */
+        .play-tts {
+            position: absolute;
+            bottom: 8px;
+            right: 12px;
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.5);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px;
+            border-radius: 20px;
+            transition: all 0.2s;
+        }
+
+        .play-tts:hover {
+            color: #ff6a00;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
         .input-area {
             padding: 20px 28px 28px;
             background: rgba(0, 0, 0, 0.2);
@@ -281,13 +294,9 @@
             transform: scale(1.02);
         }
 
-        .action-btn.record {
+        .action-btn.recording {
             background: linear-gradient(135deg, #ff6a00, #ee0979);
-        }
-
-        .action-btn.record.recording {
             animation: pulse 1.2s infinite;
-            box-shadow: 0 0 0 0 rgba(238, 9, 121, 0.7);
         }
 
         @keyframes pulse {
@@ -319,7 +328,6 @@
             box-shadow: 0 4px 12px rgba(238, 9, 121, 0.4);
         }
 
-        /* Typing Indicator */
         .typing-indicator {
             display: flex;
             gap: 6px;
@@ -354,54 +362,6 @@
             }
         }
 
-        /* TTS Play Button on Messages */
-        .play-tts {
-            background: transparent;
-            border: none;
-            color: rgba(255, 255, 255, 0.4);
-            cursor: pointer;
-            font-size: 14px;
-            margin-left: 12px;
-            transition: color 0.2s;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .play-tts:hover {
-            color: #ff6a00;
-        }
-
-        /* Loading and status indicators */
-        .status-indicator {
-            position: fixed;
-            bottom: 100px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.85);
-            backdrop-filter: blur(10px);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 40px;
-            font-size: 14px;
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            border: 1px solid rgba(255, 107, 0, 0.3);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-            white-space: nowrap;
-        }
-
-        .status-indicator .dot {
-            width: 8px;
-            height: 8px;
-            background: #4caf50;
-            border-radius: 50%;
-            animation: pulse 1.5s infinite;
-        }
-
-        /* Responsive */
         @media (max-width: 768px) {
             .app-container {
                 height: 95vh;
@@ -422,12 +382,6 @@
             
             .input-area {
                 padding: 16px 20px 24px;
-            }
-
-            .status-indicator {
-                bottom: 80px;
-                font-size: 12px;
-                padding: 8px 16px;
             }
         }
     </style>
@@ -472,18 +426,12 @@
     </div>
 
     <script>
-        // ============================================
-        // HenAi - Japanese Learning Assistant
-        // HTTP-based implementation (no WebSockets)
-        // ============================================
-        
-        // State variables
+        // State
         let currentMode = 'japanese';
-        let sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        let sessionId = 'session_' + Date.now();
         let isRecording = false;
         let mediaRecorder = null;
         let audioChunks = [];
-        let currentAudio = null;
         
         // DOM Elements
         const chatArea = document.getElementById('chatArea');
@@ -492,83 +440,13 @@
         const voiceBtn = document.getElementById('voiceBtn');
         const modeBadge = document.getElementById('modeBadge');
         
-        // Helper: Show status message
-        function showStatus(message, isError = false) {
-            let statusDiv = document.querySelector('.status-indicator');
-            if (!statusDiv) {
-                statusDiv = document.createElement('div');
-                statusDiv.className = 'status-indicator';
-                document.body.appendChild(statusDiv);
-            }
-            
-            statusDiv.innerHTML = `
-                ${!isError ? '<span class="dot"></span>' : '⚠️'}
-                <span>${message}</span>
-            `;
-            statusDiv.style.borderColor = isError ? '#ff4444' : 'rgba(255, 107, 0, 0.3)';
-            statusDiv.style.background = isError ? 'rgba(0, 0, 0, 0.9)' : 'rgba(0, 0, 0, 0.85)';
-            
-            setTimeout(() => {
-                if (statusDiv && statusDiv.parentNode) {
-                    statusDiv.remove();
-                }
-            }, 3000);
+        // Auto-scroll to bottom
+        function scrollToBottom() {
+            chatArea.scrollTop = chatArea.scrollHeight;
         }
         
-        // Send message to backend via HTTP POST
-        async function sendMessage() {
-            const message = messageInput.value.trim();
-            if (!message) return;
-            
-            // Add user message to chat
-            addMessage(message, 'user');
-            messageInput.value = '';
-            autoResizeTextarea();
-            
-            // Show typing indicator
-            showTypingIndicator();
-            
-            try {
-                const response = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        message: message,
-                        session_id: sessionId,
-                        mode: currentMode
-                    })
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                
-                const data = await response.json();
-                hideTypingIndicator();
-                
-                if (data.response) {
-                    addMessage(data.response, 'assistant');
-                    
-                    // Auto-speak Japanese responses in Japanese mode
-                    if (currentMode === 'japanese') {
-                        await speakText(data.response);
-                    }
-                } else if (data.error) {
-                    addMessage('申し訳ありません: ' + data.error, 'assistant');
-                    showStatus('Error: ' + data.error, true);
-                }
-            } catch (error) {
-                hideTypingIndicator();
-                console.error('Chat error:', error);
-                addMessage('申し訳ありません。通信エラーが発生しました。もう一度お試しください。', 'assistant');
-                showStatus('Connection error. Please check if the server is running.', true);
-            }
-        }
-        
-        // Add message to chat with proper formatting
-        function addMessage(content, role) {
+        // Add message to chat
+        function addMessage(content, role, autoSpeak = true) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
             
@@ -578,21 +456,20 @@
             
             const bubble = document.createElement('div');
             bubble.className = 'bubble';
+            bubble.innerHTML = content.replace(/\n/g, '<br>');
             
-            // Parse content for line breaks and handle text
-            bubble.innerHTML = escapeHtml(content).replace(/\n/g, '<br>');
-            
-            // Add TTS button for assistant messages (always add, but only show in Japanese mode or for manual playback)
+            // Add TTS button for ALL assistant messages (any language)
             if (role === 'assistant') {
                 const ttsBtn = document.createElement('button');
                 ttsBtn.className = 'play-tts';
                 ttsBtn.innerHTML = '🔊';
-                ttsBtn.title = 'Play audio';
-                ttsBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    speakText(content);
-                };
+                ttsBtn.onclick = () => speakText(content);
                 bubble.appendChild(ttsBtn);
+                
+                // Auto-speak Japanese mode responses
+                if (autoSpeak && currentMode === 'japanese') {
+                    speakText(content);
+                }
             }
             
             messageDiv.appendChild(avatar);
@@ -602,20 +479,12 @@
             scrollToBottom();
         }
         
-        // Escape HTML to prevent XSS
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        
-        // Typing indicator management
+        // Typing indicator
         let typingDiv = null;
         function showTypingIndicator() {
             if (typingDiv) return;
             typingDiv = document.createElement('div');
             typingDiv.className = 'message assistant';
-            typingDiv.id = 'typingIndicator';
             typingDiv.innerHTML = `
                 <div class="avatar">🐔</div>
                 <div class="typing-indicator">
@@ -633,76 +502,65 @@
             }
         }
         
-        // Text-to-Speech using HTTP backend
+        // TTS using HTTP (faster with caching)
         async function speakText(text) {
-            // Stop any currently playing audio
-            if (currentAudio) {
-                currentAudio.pause();
-                currentAudio = null;
-            }
-            
             try {
-                showStatus('🎵 Generating speech...');
                 const response = await fetch('/api/tts', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text: text })
                 });
-                
-                if (!response.ok) {
-                    throw new Error(`TTS HTTP ${response.status}`);
-                }
-                
                 const data = await response.json();
-                
                 if (data.audio) {
-                    playAudio(data.audio);
-                } else if (data.error) {
-                    console.error('TTS error:', data.error);
-                    fallbackTTS(text);
+                    const audio = new Audio('data:audio/mp3;base64,' + data.audio);
+                    await audio.play();
                 }
             } catch (error) {
                 console.error('TTS error:', error);
-                fallbackTTS(text);
+                // Fallback to browser TTS
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = currentMode === 'japanese' ? 'ja-JP' : 'en-US';
+                window.speechSynthesis.speak(utterance);
             }
         }
         
-        function fallbackTTS(text) {
-            showStatus('Using browser TTS fallback...');
-            // Fallback browser TTS
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'ja-JP';
-            utterance.rate = 0.9;
-            utterance.onend = () => showStatus('✓ Done', false);
-            utterance.onerror = () => showStatus('TTS failed', true);
-            window.speechSynthesis.speak(utterance);
-        }
-        
-        function playAudio(base64Audio) {
+        // Send message
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+            
+            addMessage(message, 'user');
+            messageInput.value = '';
+            autoResizeTextarea();
+            
+            showTypingIndicator();
+            
             try {
-                const audio = new Audio('data:audio/mp3;base64,' + base64Audio);
-                currentAudio = audio;
-                audio.onplay = () => showStatus('🔊 Playing...');
-                audio.onended = () => {
-                    currentAudio = null;
-                    showStatus('✓', false);
-                };
-                audio.onerror = (e) => {
-                    console.error('Audio playback error:', e);
-                    showStatus('Audio playback failed', true);
-                    currentAudio = null;
-                };
-                audio.play().catch(e => {
-                    console.error('Audio play error:', e);
-                    showStatus('Cannot play audio', true);
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: message,
+                        session_id: sessionId,
+                        mode: currentMode
+                    })
                 });
-            } catch (e) {
-                console.error('Audio creation error:', e);
-                showStatus('Audio error', true);
+                
+                const data = await response.json();
+                hideTypingIndicator();
+                
+                if (data.response) {
+                    // Auto-speak will happen inside addMessage
+                    addMessage(data.response, 'assistant', true);
+                }
+            } catch (error) {
+                hideTypingIndicator();
+                addMessage('Sorry, an error occurred. Please try again.', 'assistant', false);
+                console.error('Error:', error);
             }
         }
         
-        // Voice Recording using HTTP POST
+        // Voice Recording using HTTP (no WebSocket)
         async function startRecording() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -710,74 +568,65 @@
                 audioChunks = [];
                 
                 mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) {
-                        audioChunks.push(event.data);
-                    }
+                    audioChunks.push(event.data);
                 };
                 
                 mediaRecorder.onstop = async () => {
-                    if (audioChunks.length === 0) {
-                        showStatus('No audio recorded', true);
-                        stream.getTracks().forEach(track => track.stop());
-                        return;
-                    }
-                    
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
                     const formData = new FormData();
-                    formData.append('audio', audioBlob, 'recording.webm');
+                    formData.append('audio', audioBlob, 'voice.wav');
+                    formData.append('mode', currentMode);
                     
-                    showStatus('🎤 Processing speech...');
+                    showTypingIndicator();
                     
                     try {
-                        const response = await fetch('/api/stt', {
+                        const response = await fetch('/api/voice', {
                             method: 'POST',
                             body: formData
                         });
                         
                         const data = await response.json();
+                        hideTypingIndicator();
                         
-                        if (data.success && data.text) {
-                            messageInput.value = data.text;
-                            showStatus(`✓ Recognized: "${data.text}"`);
-                            await sendMessage();
+                        if (data.success) {
+                            // Show recognized text
+                            if (data.text) {
+                                addMessage(data.text, 'user');
+                            }
+                            // Show AI response
+                            if (data.response) {
+                                addMessage(data.response, 'assistant', true);
+                            }
                         } else {
-                            showStatus('Could not recognize speech. Please try again.', true);
+                            addMessage('🎤 Could not recognize speech. Please try again.', 'assistant', false);
                         }
                     } catch (error) {
-                        console.error('STT error:', error);
-                        showStatus('Speech recognition failed. Please type your message.', true);
+                        hideTypingIndicator();
+                        addMessage('Voice recognition failed. Please type your message.', 'assistant', false);
+                        console.error('Voice error:', error);
                     }
                     
                     stream.getTracks().forEach(track => track.stop());
                 };
                 
-                mediaRecorder.start(100);
+                mediaRecorder.start();
                 isRecording = true;
                 voiceBtn.classList.add('recording');
                 voiceBtn.innerHTML = '⏹️';
-                showStatus('🎙️ Recording... Click mic again to stop');
                 
                 // Auto-stop after 10 seconds
-                const autoStopTimeout = setTimeout(() => {
-                    if (isRecording) {
-                        stopRecording();
-                    }
+                setTimeout(() => {
+                    if (isRecording) stopRecording();
                 }, 10000);
-                
-                // Store timeout to clear if stopped manually
-                mediaRecorder._autoStopTimeout = autoStopTimeout;
                 
             } catch (error) {
                 console.error('Microphone error:', error);
-                showStatus('Microphone access denied. Please check permissions.', true);
+                addMessage('Microphone access denied or not available.', 'assistant', false);
             }
         }
         
         function stopRecording() {
-            if (mediaRecorder && isRecording && mediaRecorder.state === 'recording') {
-                if (mediaRecorder._autoStopTimeout) {
-                    clearTimeout(mediaRecorder._autoStopTimeout);
-                }
+            if (mediaRecorder && isRecording) {
                 mediaRecorder.stop();
                 isRecording = false;
                 voiceBtn.classList.remove('recording');
@@ -796,15 +645,7 @@
         // Auto-resize textarea
         function autoResizeTextarea() {
             messageInput.style.height = 'auto';
-            const newHeight = Math.min(messageInput.scrollHeight, 120);
-            messageInput.style.height = newHeight + 'px';
-        }
-        
-        // Scroll to bottom of chat
-        function scrollToBottom() {
-            requestAnimationFrame(() => {
-                chatArea.scrollTop = chatArea.scrollHeight;
-            });
+            messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
         }
         
         // Mode switching
@@ -821,61 +662,31 @@
             if (mode === 'japanese') {
                 modeBadge.innerHTML = '🇯🇵 日本語のみ返答';
                 modeBadge.style.borderLeftColor = '#ff6a00';
-                addMessage('🇯🇵 日本語モードが有効になりました。これからはどんな言語で話しかけても、日本語で返答します。', 'assistant');
+                addMessage('🇯🇵 日本語モードが有効になりました。これからはどんな言語で話しかけても、日本語で返答します。', 'assistant', false);
             } else {
                 modeBadge.innerHTML = '💬 通常モード (多言語)';
                 modeBadge.style.borderLeftColor = '#555';
-                addMessage('💬 Normal mode enabled. I will respond in your language.', 'assistant');
-            }
-        }
-        
-        // Check server health on load
-        async function checkServerHealth() {
-            try {
-                const response = await fetch('/health');
-                if (response.ok) {
-                    console.log('Server is healthy');
-                } else {
-                    showStatus('Server connection OK but health check failed', true);
-                }
-            } catch (error) {
-                console.warn('Server health check failed:', error);
-                showStatus('Connected to server', false);
+                addMessage('💬 Normal mode enabled. I will respond in your language.', 'assistant', false);
             }
         }
         
         // Event Listeners
         sendBtn.addEventListener('click', sendMessage);
         voiceBtn.addEventListener('click', toggleRecording);
-        
         messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 sendMessage();
             }
         });
-        
         messageInput.addEventListener('input', autoResizeTextarea);
         
         document.querySelectorAll('.mode-btn').forEach(btn => {
             btn.addEventListener('click', () => setMode(btn.dataset.mode));
         });
         
-        // Clean up on page unload
-        window.addEventListener('beforeunload', () => {
-            if (mediaRecorder && isRecording) {
-                mediaRecorder.stop();
-            }
-            if (currentAudio) {
-                currentAudio.pause();
-            }
-        });
-        
         // Initialize
         autoResizeTextarea();
-        checkServerHealth();
-        
-        console.log('HenAi initialized with session ID:', sessionId);
     </script>
 </body>
 </html>
