@@ -363,10 +363,42 @@
             font-size: 14px;
             margin-left: 12px;
             transition: color 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
         }
 
         .play-tts:hover {
             color: #ff6a00;
+        }
+
+        /* Loading and status indicators */
+        .status-indicator {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(10px);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 40px;
+            font-size: 14px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid rgba(255, 107, 0, 0.3);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            white-space: nowrap;
+        }
+
+        .status-indicator .dot {
+            width: 8px;
+            height: 8px;
+            background: #4caf50;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
         }
 
         /* Responsive */
@@ -390,6 +422,12 @@
             
             .input-area {
                 padding: 16px 20px 24px;
+            }
+
+            .status-indicator {
+                bottom: 80px;
+                font-size: 12px;
+                padding: 8px 16px;
             }
         }
     </style>
@@ -433,15 +471,19 @@
         </div>
     </div>
 
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
-        // State
+        // ============================================
+        // HenAi - Japanese Learning Assistant
+        // HTTP-based implementation (no WebSockets)
+        // ============================================
+        
+        // State variables
         let currentMode = 'japanese';
-        let sessionId = 'session_' + Date.now();
+        let sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         let isRecording = false;
         let mediaRecorder = null;
         let audioChunks = [];
-        let socket = null;
+        let currentAudio = null;
         
         // DOM Elements
         const chatArea = document.getElementById('chatArea');
@@ -450,34 +492,30 @@
         const voiceBtn = document.getElementById('voiceBtn');
         const modeBadge = document.getElementById('modeBadge');
         
-        // Initialize Socket.IO
-        function initSocket() {
-            socket = io();
+        // Helper: Show status message
+        function showStatus(message, isError = false) {
+            let statusDiv = document.querySelector('.status-indicator');
+            if (!statusDiv) {
+                statusDiv = document.createElement('div');
+                statusDiv.className = 'status-indicator';
+                document.body.appendChild(statusDiv);
+            }
             
-            socket.on('voice_result', (data) => {
-                if (data.success) {
-                    messageInput.value = data.text;
-                    sendMessage();
-                } else {
-                    showToast('Could not recognize speech. Please try again.');
-                }
-                stopRecording();
-            });
+            statusDiv.innerHTML = `
+                ${!isError ? '<span class="dot"></span>' : '⚠️'}
+                <span>${message}</span>
+            `;
+            statusDiv.style.borderColor = isError ? '#ff4444' : 'rgba(255, 107, 0, 0.3)';
+            statusDiv.style.background = isError ? 'rgba(0, 0, 0, 0.9)' : 'rgba(0, 0, 0, 0.85)';
             
-            socket.on('voice_response', (data) => {
-                if (data.success) {
-                    addMessage(data.response, 'assistant');
+            setTimeout(() => {
+                if (statusDiv && statusDiv.parentNode) {
+                    statusDiv.remove();
                 }
-            });
-            
-            socket.on('voice_audio', (data) => {
-                if (data.success) {
-                    playAudio(data.audio);
-                }
-            });
+            }, 3000);
         }
         
-        // Send message to backend
+        // Send message to backend via HTTP POST
         async function sendMessage() {
             const message = messageInput.value.trim();
             if (!message) return;
@@ -493,13 +531,19 @@
             try {
                 const response = await fetch('/api/chat', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json'
+                    },
                     body: JSON.stringify({
                         message: message,
                         session_id: sessionId,
                         mode: currentMode
                     })
                 });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
                 
                 const data = await response.json();
                 hideTypingIndicator();
@@ -509,17 +553,21 @@
                     
                     // Auto-speak Japanese responses in Japanese mode
                     if (currentMode === 'japanese') {
-                        speakText(data.response);
+                        await speakText(data.response);
                     }
+                } else if (data.error) {
+                    addMessage('申し訳ありません: ' + data.error, 'assistant');
+                    showStatus('Error: ' + data.error, true);
                 }
             } catch (error) {
                 hideTypingIndicator();
-                addMessage('Sorry, an error occurred. Please try again.', 'assistant');
-                console.error('Error:', error);
+                console.error('Chat error:', error);
+                addMessage('申し訳ありません。通信エラーが発生しました。もう一度お試しください。', 'assistant');
+                showStatus('Connection error. Please check if the server is running.', true);
             }
         }
         
-        // Add message to chat
+        // Add message to chat with proper formatting
         function addMessage(content, role) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
@@ -531,15 +579,19 @@
             const bubble = document.createElement('div');
             bubble.className = 'bubble';
             
-            // Parse content for line breaks
-            bubble.innerHTML = content.replace(/\n/g, '<br>');
+            // Parse content for line breaks and handle text
+            bubble.innerHTML = escapeHtml(content).replace(/\n/g, '<br>');
             
-            // Add TTS button for assistant messages in Japanese mode
-            if (role === 'assistant' && currentMode === 'japanese') {
+            // Add TTS button for assistant messages (always add, but only show in Japanese mode or for manual playback)
+            if (role === 'assistant') {
                 const ttsBtn = document.createElement('button');
                 ttsBtn.className = 'play-tts';
                 ttsBtn.innerHTML = '🔊';
-                ttsBtn.onclick = () => speakText(content);
+                ttsBtn.title = 'Play audio';
+                ttsBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    speakText(content);
+                };
                 bubble.appendChild(ttsBtn);
             }
             
@@ -550,12 +602,20 @@
             scrollToBottom();
         }
         
-        // Typing indicator
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Typing indicator management
         let typingDiv = null;
         function showTypingIndicator() {
             if (typingDiv) return;
             typingDiv = document.createElement('div');
             typingDiv.className = 'message assistant';
+            typingDiv.id = 'typingIndicator';
             typingDiv.innerHTML = `
                 <div class="avatar">🐔</div>
                 <div class="typing-indicator">
@@ -573,33 +633,76 @@
             }
         }
         
-        // TTS using backend
+        // Text-to-Speech using HTTP backend
         async function speakText(text) {
+            // Stop any currently playing audio
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio = null;
+            }
+            
             try {
+                showStatus('🎵 Generating speech...');
                 const response = await fetch('/api/tts', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text: text })
                 });
+                
+                if (!response.ok) {
+                    throw new Error(`TTS HTTP ${response.status}`);
+                }
+                
                 const data = await response.json();
+                
                 if (data.audio) {
                     playAudio(data.audio);
+                } else if (data.error) {
+                    console.error('TTS error:', data.error);
+                    fallbackTTS(text);
                 }
             } catch (error) {
                 console.error('TTS error:', error);
-                // Fallback browser TTS
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = 'ja-JP';
-                window.speechSynthesis.speak(utterance);
+                fallbackTTS(text);
             }
         }
         
-        function playAudio(base64Audio) {
-            const audio = new Audio('data:audio/mp3;base64,' + base64Audio);
-            audio.play().catch(e => console.error('Audio playback error:', e));
+        function fallbackTTS(text) {
+            showStatus('Using browser TTS fallback...');
+            // Fallback browser TTS
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'ja-JP';
+            utterance.rate = 0.9;
+            utterance.onend = () => showStatus('✓ Done', false);
+            utterance.onerror = () => showStatus('TTS failed', true);
+            window.speechSynthesis.speak(utterance);
         }
         
-        // Voice Recording
+        function playAudio(base64Audio) {
+            try {
+                const audio = new Audio('data:audio/mp3;base64,' + base64Audio);
+                currentAudio = audio;
+                audio.onplay = () => showStatus('🔊 Playing...');
+                audio.onended = () => {
+                    currentAudio = null;
+                    showStatus('✓', false);
+                };
+                audio.onerror = (e) => {
+                    console.error('Audio playback error:', e);
+                    showStatus('Audio playback failed', true);
+                    currentAudio = null;
+                };
+                audio.play().catch(e => {
+                    console.error('Audio play error:', e);
+                    showStatus('Cannot play audio', true);
+                });
+            } catch (e) {
+                console.error('Audio creation error:', e);
+                showStatus('Audio error', true);
+            }
+        }
+        
+        // Voice Recording using HTTP POST
         async function startRecording() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -607,42 +710,74 @@
                 audioChunks = [];
                 
                 mediaRecorder.ondataavailable = (event) => {
-                    audioChunks.push(event.data);
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
                 };
                 
                 mediaRecorder.onstop = async () => {
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        const base64Audio = reader.result.split(',')[1];
-                        socket.emit('voice_input', {
-                            audio: base64Audio,
-                            mode: currentMode
+                    if (audioChunks.length === 0) {
+                        showStatus('No audio recorded', true);
+                        stream.getTracks().forEach(track => track.stop());
+                        return;
+                    }
+                    
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const formData = new FormData();
+                    formData.append('audio', audioBlob, 'recording.webm');
+                    
+                    showStatus('🎤 Processing speech...');
+                    
+                    try {
+                        const response = await fetch('/api/stt', {
+                            method: 'POST',
+                            body: formData
                         });
-                    };
-                    reader.readAsDataURL(audioBlob);
+                        
+                        const data = await response.json();
+                        
+                        if (data.success && data.text) {
+                            messageInput.value = data.text;
+                            showStatus(`✓ Recognized: "${data.text}"`);
+                            await sendMessage();
+                        } else {
+                            showStatus('Could not recognize speech. Please try again.', true);
+                        }
+                    } catch (error) {
+                        console.error('STT error:', error);
+                        showStatus('Speech recognition failed. Please type your message.', true);
+                    }
+                    
                     stream.getTracks().forEach(track => track.stop());
                 };
                 
-                mediaRecorder.start();
+                mediaRecorder.start(100);
                 isRecording = true;
                 voiceBtn.classList.add('recording');
                 voiceBtn.innerHTML = '⏹️';
-                showToast('Recording... Click again to stop');
+                showStatus('🎙️ Recording... Click mic again to stop');
                 
                 // Auto-stop after 10 seconds
-                setTimeout(() => {
-                    if (isRecording) stopRecording();
+                const autoStopTimeout = setTimeout(() => {
+                    if (isRecording) {
+                        stopRecording();
+                    }
                 }, 10000);
+                
+                // Store timeout to clear if stopped manually
+                mediaRecorder._autoStopTimeout = autoStopTimeout;
                 
             } catch (error) {
                 console.error('Microphone error:', error);
-                showToast('Microphone access denied or not available');
+                showStatus('Microphone access denied. Please check permissions.', true);
             }
         }
         
         function stopRecording() {
-            if (mediaRecorder && isRecording) {
+            if (mediaRecorder && isRecording && mediaRecorder.state === 'recording') {
+                if (mediaRecorder._autoStopTimeout) {
+                    clearTimeout(mediaRecorder._autoStopTimeout);
+                }
                 mediaRecorder.stop();
                 isRecording = false;
                 voiceBtn.classList.remove('recording');
@@ -661,33 +796,15 @@
         // Auto-resize textarea
         function autoResizeTextarea() {
             messageInput.style.height = 'auto';
-            messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
+            const newHeight = Math.min(messageInput.scrollHeight, 120);
+            messageInput.style.height = newHeight + 'px';
         }
         
-        // Scroll to bottom
+        // Scroll to bottom of chat
         function scrollToBottom() {
-            chatArea.scrollTop = chatArea.scrollHeight;
-        }
-        
-        // Toast notification
-        function showToast(message) {
-            const toast = document.createElement('div');
-            toast.style.cssText = `
-                position: fixed;
-                bottom: 100px;
-                left: 50%;
-                transform: translateX(-50%);
-                background: rgba(0,0,0,0.8);
-                color: white;
-                padding: 10px 20px;
-                border-radius: 30px;
-                font-size: 14px;
-                z-index: 1000;
-                animation: fadeInUp 0.3s ease;
-            `;
-            toast.textContent = message;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 2000);
+            requestAnimationFrame(() => {
+                chatArea.scrollTop = chatArea.scrollHeight;
+            });
         }
         
         // Mode switching
@@ -712,24 +829,53 @@
             }
         }
         
+        // Check server health on load
+        async function checkServerHealth() {
+            try {
+                const response = await fetch('/health');
+                if (response.ok) {
+                    console.log('Server is healthy');
+                } else {
+                    showStatus('Server connection OK but health check failed', true);
+                }
+            } catch (error) {
+                console.warn('Server health check failed:', error);
+                showStatus('Connected to server', false);
+            }
+        }
+        
         // Event Listeners
         sendBtn.addEventListener('click', sendMessage);
         voiceBtn.addEventListener('click', toggleRecording);
+        
         messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 sendMessage();
             }
         });
+        
         messageInput.addEventListener('input', autoResizeTextarea);
         
         document.querySelectorAll('.mode-btn').forEach(btn => {
             btn.addEventListener('click', () => setMode(btn.dataset.mode));
         });
         
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+            }
+            if (currentAudio) {
+                currentAudio.pause();
+            }
+        });
+        
         // Initialize
-        initSocket();
         autoResizeTextarea();
+        checkServerHealth();
+        
+        console.log('HenAi initialized with session ID:', sessionId);
     </script>
 </body>
 </html>
