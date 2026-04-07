@@ -1,0 +1,9 @@
+Flask
+flask-cors
+flask-socketio
+python-socketio
+requests
+gTTS
+SpeechRecognition
+pydub
+eventlet
