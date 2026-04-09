@@ -9,5 +9,8 @@ services:
         value: 3.11.0
       - key: OPENROUTER_API_KEY
         sync: false
+      - key: GUNICORN_TIMEOUT
+        value: 120
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app -k eventlet -w 1
+    startCommand: gunicorn app:app --timeout 120 --workers 2 --bind 0.0.0.0:$PORT
+    healthCheckPath: /health
