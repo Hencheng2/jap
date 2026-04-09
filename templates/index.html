@@ -3,7 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>HenAi | Japanese Learning Assistant</title>
+    <title>HenAi | Multilingual AI Assistant</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/dracula.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/htmlmixed/htmlmixed.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -21,7 +28,6 @@
             padding: 20px;
         }
 
-        /* Main Container */
         .app-container {
             width: 100%;
             max-width: 1400px;
@@ -35,7 +41,6 @@
             flex-direction: column;
         }
 
-        /* Header */
         .header {
             padding: 20px 28px;
             background: rgba(0, 0, 0, 0.3);
@@ -80,41 +85,36 @@
             margin-left: 8px;
         }
 
-        /* Mode Toggle */
-        .mode-toggle {
+        .controls {
             display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .language-selector {
             background: rgba(0, 0, 0, 0.4);
             border-radius: 60px;
-            padding: 4px;
-            gap: 4px;
+            padding: 6px 12px;
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .mode-btn {
-            padding: 10px 24px;
-            border: none;
+        .language-selector select {
             background: transparent;
-            color: rgba(255, 255, 255, 0.6);
-            font-weight: 500;
-            border-radius: 60px;
-            cursor: pointer;
-            transition: all 0.2s ease;
+            border: none;
+            color: white;
             font-size: 0.9rem;
+            padding: 6px 8px;
+            cursor: pointer;
+            outline: none;
         }
 
-        .mode-btn.active {
-            background: linear-gradient(135deg, #ff6a00, #ee0979);
-            color: white;
-            box-shadow: 0 2px 8px rgba(238, 9, 121, 0.4);
-        }
-
-        .mode-btn:hover:not(.active) {
-            background: rgba(255, 255, 255, 0.1);
+        .language-selector select option {
+            background: #1a1a2e;
             color: white;
         }
 
-        /* Japanese mode indicator */
-        .japanese-badge {
+        .mode-badge {
             background: rgba(255, 107, 0, 0.2);
             padding: 6px 14px;
             border-radius: 40px;
@@ -122,7 +122,6 @@
             border-left: 2px solid #ff6a00;
         }
 
-        /* Main Chat Area */
         .chat-area {
             flex: 1;
             overflow-y: auto;
@@ -132,7 +131,6 @@
             gap: 16px;
         }
 
-        /* Custom Scrollbar */
         .chat-area::-webkit-scrollbar {
             width: 6px;
         }
@@ -147,7 +145,6 @@
             border-radius: 10px;
         }
 
-        /* Message Bubbles */
         .message {
             display: flex;
             gap: 14px;
@@ -195,11 +192,12 @@
         }
 
         .bubble {
-            max-width: 70%;
+            max-width: 75%;
             padding: 14px 20px;
             border-radius: 24px;
             line-height: 1.5;
             font-size: 0.95rem;
+            position: relative;
         }
 
         .user .bubble {
@@ -216,7 +214,77 @@
             border-bottom-left-radius: 6px;
         }
 
-        /* Input Area */
+        /* Code Mirror Container */
+        .code-container {
+            margin-top: 10px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .code-toolbar {
+            display: flex;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.6);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            flex-wrap: wrap;
+        }
+
+        .code-toolbar button {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .code-toolbar button:hover {
+            background: rgba(255, 107, 0, 0.6);
+        }
+
+        .CodeMirror {
+            height: auto;
+            min-height: 200px;
+            max-height: 400px;
+            font-size: 13px;
+        }
+
+        /* Message Actions */
+        .message-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+
+        .message:hover .message-actions {
+            opacity: 1;
+        }
+
+        .message-actions button {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: rgba(255, 255, 255, 0.7);
+            padding: 4px 10px;
+            border-radius: 16px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .message-actions button:hover {
+            background: rgba(255, 107, 0, 0.5);
+            color: white;
+        }
+
         .input-area {
             padding: 20px 28px 28px;
             background: rgba(0, 0, 0, 0.2);
@@ -281,25 +349,15 @@
             transform: scale(1.02);
         }
 
-        .action-btn.record {
+        .action-btn.recording {
             background: linear-gradient(135deg, #ff6a00, #ee0979);
-        }
-
-        .action-btn.record.recording {
             animation: pulse 1.2s infinite;
-            box-shadow: 0 0 0 0 rgba(238, 9, 121, 0.7);
         }
 
         @keyframes pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(238, 9, 121, 0.7);
-            }
-            70% {
-                box-shadow: 0 0 0 12px rgba(238, 9, 121, 0);
-            }
-            100% {
-                box-shadow: 0 0 0 0 rgba(238, 9, 121, 0);
-            }
+            0% { box-shadow: 0 0 0 0 rgba(238, 9, 121, 0.7); }
+            70% { box-shadow: 0 0 0 12px rgba(238, 9, 121, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(238, 9, 121, 0); }
         }
 
         .send-btn {
@@ -319,7 +377,6 @@
             box-shadow: 0 4px 12px rgba(238, 9, 121, 0.4);
         }
 
-        /* Typing Indicator */
         .typing-indicator {
             display: flex;
             gap: 6px;
@@ -337,98 +394,73 @@
             animation: bounce 1.2s infinite;
         }
 
-        .typing-indicator span:nth-child(2) {
-            animation-delay: 0.1s;
-        }
-
-        .typing-indicator span:nth-child(3) {
-            animation-delay: 0.2s;
-        }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.1s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.2s; }
 
         @keyframes bounce {
-            0%, 60%, 100% {
-                transform: translateY(0);
-            }
-            30% {
-                transform: translateY(-8px);
-            }
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-8px); }
         }
 
-        /* TTS Play Button on Messages */
-        .play-tts {
-            background: transparent;
-            border: none;
-            color: rgba(255, 255, 255, 0.4);
-            cursor: pointer;
-            font-size: 14px;
-            margin-left: 12px;
-            transition: color 0.2s;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .play-tts:hover {
-            color: #ff6a00;
-        }
-
-        /* Loading and status indicators */
-        .status-indicator {
+        /* Preview Modal */
+        .preview-modal {
+            display: none;
             position: fixed;
-            bottom: 100px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.85);
-            backdrop-filter: blur(10px);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 40px;
-            font-size: 14px;
-            z-index: 1000;
-            display: flex;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 2000;
+            justify-content: center;
             align-items: center;
-            gap: 10px;
-            border: 1px solid rgba(255, 107, 0, 0.3);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-            white-space: nowrap;
         }
 
-        .status-indicator .dot {
-            width: 8px;
-            height: 8px;
-            background: #4caf50;
-            border-radius: 50%;
-            animation: pulse 1.5s infinite;
+        .preview-modal.active {
+            display: flex;
         }
 
-        /* Responsive */
+        .preview-content {
+            width: 90%;
+            height: 90%;
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .preview-header {
+            padding: 12px 20px;
+            background: #1a1a2e;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .preview-header button {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            padding: 6px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .preview-frame {
+            flex: 1;
+            width: 100%;
+            border: none;
+        }
+
         @media (max-width: 768px) {
-            .app-container {
-                height: 95vh;
-                border-radius: 24px;
-            }
-            
-            .bubble {
-                max-width: 85%;
-            }
-            
-            .header {
-                padding: 14px 20px;
-            }
-            
-            .chat-area {
-                padding: 16px 20px;
-            }
-            
-            .input-area {
-                padding: 16px 20px 24px;
-            }
-
-            .status-indicator {
-                bottom: 80px;
-                font-size: 12px;
-                padding: 8px 16px;
-            }
+            .app-container { height: 95vh; border-radius: 24px; }
+            .bubble { max-width: 85%; }
+            .header { padding: 14px 20px; }
+            .chat-area { padding: 16px 20px; }
+            .input-area { padding: 16px 20px 24px; }
+            .code-toolbar button { padding: 4px 8px; font-size: 10px; }
         }
     </style>
 </head>
@@ -437,14 +469,26 @@
         <div class="header">
             <div class="logo-area">
                 <div class="logo">🐔</div>
-                <h1>HenAi <span>Japanese Assistant</span></h1>
+                <h1>HenAi <span>Multilingual Assistant</span></h1>
             </div>
-            <div style="display: flex; gap: 12px; align-items: center;">
-                <div class="mode-toggle">
-                    <button class="mode-btn" data-mode="normal">💬 Normal</button>
-                    <button class="mode-btn active" data-mode="japanese">🇯🇵 日本語のみ</button>
+            <div class="controls">
+                <div class="language-selector">
+                    <select id="responseLanguage">
+                        <option value="japanese">🇯🇵 日本語</option>
+                        <option value="english">🇬🇧 English</option>
+                        <option value="swahili">🇰🇪 Kiswahili</option>
+                        <option value="spanish">🇪🇸 Español</option>
+                        <option value="french">🇫🇷 Français</option>
+                        <option value="german">🇩🇪 Deutsch</option>
+                        <option value="chinese">🇨🇳 中文</option>
+                        <option value="korean">🇰🇷 한국어</option>
+                        <option value="hindi">🇮🇳 हिन्दी</option>
+                        <option value="arabic">🇸🇦 العربية</option>
+                        <option value="russian">🇷🇺 Русский</option>
+                        <option value="portuguese">🇵🇹 Português</option>
+                    </select>
                 </div>
-                <div class="japanese-badge" id="modeBadge">📢 日本語のみ返答</div>
+                <div class="mode-badge" id="modeBadge">🌐 Multi-Language Mode</div>
             </div>
         </div>
 
@@ -452,17 +496,16 @@
             <div class="message assistant">
                 <div class="avatar">🐔</div>
                 <div class="bubble">
-                    こんにちは！私はHenAiです。🇯🇵<br>
-                    私は日本語のみで返答します。英語、スワヒリ語、どんな言語で話しかけても大丈夫です！<br>
-                    さあ、日本語で会話を始めましょう！😊
-                    <button class="play-tts" onclick="speakText('こんにちは！私はHenAiです。私は日本語のみで返答します。英語、スワヒリ語、どんな言語で話しかけても大丈夫です！さあ、日本語で会話を始めましょう！')">🔊</button>
+                    Hello! I'm HenAi, your multilingual AI assistant. 🌐<br>
+                    I can respond in Japanese, English, Swahili, Spanish, French, German, Chinese, Korean, Hindi, Arabic, Russian, Portuguese, and more!<br>
+                    Ask me anything, and I'll respond in your chosen language. 😊
                 </div>
             </div>
         </div>
 
         <div class="input-area">
             <div class="input-wrapper">
-                <textarea id="messageInput" rows="1" placeholder="Type your message in any language... (English, Kiswahili, 日本語)"></textarea>
+                <textarea id="messageInput" rows="1" placeholder="Type your message in any language..."></textarea>
                 <div class="action-buttons">
                     <button class="action-btn" id="voiceBtn" title="Voice Input">🎤</button>
                     <button class="send-btn" id="sendBtn">➤</button>
@@ -471,145 +514,305 @@
         </div>
     </div>
 
+    <!-- Preview Modal -->
+    <div class="preview-modal" id="previewModal">
+        <div class="preview-content">
+            <div class="preview-header">
+                <span>HTML Preview</span>
+                <button onclick="closePreview()">Close</button>
+            </div>
+            <iframe class="preview-frame" id="previewFrame"></iframe>
+        </div>
+    </div>
+
     <script>
-        // ============================================
-        // HenAi - Japanese Learning Assistant
-        // HTTP-based implementation (no WebSockets)
-        // ============================================
-        
         // State variables
-        let currentMode = 'japanese';
+        let currentLanguage = 'japanese';
         let sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         let isRecording = false;
         let mediaRecorder = null;
         let audioChunks = [];
         let currentAudio = null;
-        
+        let conversationHistory = [];
+
         // DOM Elements
         const chatArea = document.getElementById('chatArea');
         const messageInput = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
         const voiceBtn = document.getElementById('voiceBtn');
+        const languageSelect = document.getElementById('responseLanguage');
         const modeBadge = document.getElementById('modeBadge');
-        
-        // Helper: Show status message
-        function showStatus(message, isError = false) {
-            let statusDiv = document.querySelector('.status-indicator');
-            if (!statusDiv) {
-                statusDiv = document.createElement('div');
-                statusDiv.className = 'status-indicator';
-                document.body.appendChild(statusDiv);
-            }
-            
-            statusDiv.innerHTML = `
-                ${!isError ? '<span class="dot"></span>' : '⚠️'}
-                <span>${message}</span>
-            `;
-            statusDiv.style.borderColor = isError ? '#ff4444' : 'rgba(255, 107, 0, 0.3)';
-            statusDiv.style.background = isError ? 'rgba(0, 0, 0, 0.9)' : 'rgba(0, 0, 0, 0.85)';
-            
-            setTimeout(() => {
-                if (statusDiv && statusDiv.parentNode) {
-                    statusDiv.remove();
-                }
-            }, 3000);
+
+        // Update mode badge
+        languageSelect.addEventListener('change', () => {
+            currentLanguage = languageSelect.value;
+            const langNames = {
+                japanese: '🇯🇵 Japanese Mode',
+                english: '🇬🇧 English Mode',
+                swahili: '🇰🇪 Swahili Mode',
+                spanish: '🇪🇸 Spanish Mode',
+                french: '🇫🇷 French Mode',
+                german: '🇩🇪 German Mode',
+                chinese: '🇨🇳 Chinese Mode',
+                korean: '🇰🇷 Korean Mode',
+                hindi: '🇮🇳 Hindi Mode',
+                arabic: '🇸🇦 Arabic Mode',
+                russian: '🇷🇺 Russian Mode',
+                portuguese: '🇵🇹 Portuguese Mode'
+            };
+            modeBadge.textContent = langNames[currentLanguage] || '🌐 Multi-Language Mode';
+        });
+
+        // Clean markdown from text
+        function cleanMarkdown(text) {
+            if (!text) return text;
+            // Remove markdown headers
+            text = text.replace(/^#{1,6}\s+.*$/gm, '');
+            // Remove bold/italic markers
+            text = text.replace(/\*\*([^*]+)\*\*/g, '$1');
+            text = text.replace(/\*([^*]+)\*/g, '$1');
+            text = text.replace(/__([^_]+)__/g, '$1');
+            text = text.replace(/_([^_]+)_/g, '$1');
+            // Remove code block markers but keep content
+            text = text.replace(/```[\s\S]*?```/g, (match) => {
+                const code = match.replace(/```\w*\n?/g, '').replace(/```$/, '');
+                return code;
+            });
+            // Remove inline code markers
+            text = text.replace(/`([^`]+)`/g, '$1');
+            // Remove horizontal rules
+            text = text.replace(/^---+$/gm, '');
+            // Remove extra newlines
+            text = text.replace(/\n{3,}/g, '\n\n');
+            return text.trim();
         }
-        
-        // Send message to backend via HTTP POST
+
+        // Extract code from response
+        function extractCode(text) {
+            const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
+            const matches = [];
+            let match;
+            while ((match = codeBlockRegex.exec(text)) !== null) {
+                matches.push({
+                    language: match[1] || 'text',
+                    code: match[2].trim()
+                });
+            }
+            if (matches.length > 0) {
+                return matches[0];
+            }
+            return null;
+        }
+
+        // Check if response contains HTML
+        function isHtmlCode(code) {
+            const htmlPatterns = ['<!DOCTYPE html>', '<html', '<head', '<body', '<div', '<span', '<p>'];
+            return htmlPatterns.some(pattern => code.toLowerCase().includes(pattern.toLowerCase()));
+        }
+
+        // Send message
         async function sendMessage() {
             const message = messageInput.value.trim();
             if (!message) return;
-            
+
             // Add user message to chat
             addMessage(message, 'user');
             messageInput.value = '';
             autoResizeTextarea();
-            
+
+            // Add to conversation history
+            conversationHistory.push({ role: 'user', content: message });
+
             // Show typing indicator
             showTypingIndicator();
-            
+
             try {
                 const response = await fetch('/api/chat', {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         message: message,
                         session_id: sessionId,
-                        mode: currentMode
+                        language: currentLanguage,
+                        history: conversationHistory.slice(0, -1)
                     })
                 });
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
                 const data = await response.json();
                 hideTypingIndicator();
-                
+
                 if (data.response) {
-                    addMessage(data.response, 'assistant');
+                    const cleanedResponse = cleanMarkdown(data.response);
+                    addMessage(cleanedResponse, 'assistant');
+                    conversationHistory.push({ role: 'assistant', content: cleanedResponse });
                     
-                    // Auto-speak Japanese responses in Japanese mode
-                    if (currentMode === 'japanese') {
-                        await speakText(data.response);
-                    }
+                    // Auto-speak
+                    await speakText(cleanedResponse);
                 } else if (data.error) {
-                    addMessage('申し訳ありません: ' + data.error, 'assistant');
-                    showStatus('Error: ' + data.error, true);
+                    addMessage('Sorry: ' + data.error, 'assistant');
                 }
             } catch (error) {
                 hideTypingIndicator();
                 console.error('Chat error:', error);
-                addMessage('申し訳ありません。通信エラーが発生しました。もう一度お試しください。', 'assistant');
-                showStatus('Connection error. Please check if the server is running.', true);
+                addMessage('Sorry, a connection error occurred. Please try again.', 'assistant');
             }
         }
-        
-        // Add message to chat with proper formatting
+
+        // Add message to chat
         function addMessage(content, role) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
-            
+
             const avatar = document.createElement('div');
             avatar.className = 'avatar';
             avatar.textContent = role === 'user' ? '👤' : '🐔';
-            
+
             const bubble = document.createElement('div');
             bubble.className = 'bubble';
-            
-            // Parse content for line breaks and handle text
-            bubble.innerHTML = escapeHtml(content).replace(/\n/g, '<br>');
-            
-            // Add TTS button for assistant messages (always add, but only show in Japanese mode or for manual playback)
-            if (role === 'assistant') {
-                const ttsBtn = document.createElement('button');
-                ttsBtn.className = 'play-tts';
-                ttsBtn.innerHTML = '🔊';
-                ttsBtn.title = 'Play audio';
-                ttsBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    speakText(content);
+
+            // Check for code in assistant messages
+            const codeData = role === 'assistant' ? extractCode(content) : null;
+
+            if (codeData && codeData.code) {
+                // Display non-code text first
+                const nonCodeText = content.replace(/```[\s\S]*?```/g, '').trim();
+                if (nonCodeText) {
+                    const textDiv = document.createElement('div');
+                    textDiv.innerHTML = escapeHtml(nonCodeText).replace(/\n/g, '<br>');
+                    bubble.appendChild(textDiv);
+                }
+
+                // Create code container with CodeMirror
+                const codeContainer = document.createElement('div');
+                codeContainer.className = 'code-container';
+                
+                const toolbar = document.createElement('div');
+                toolbar.className = 'code-toolbar';
+                
+                const copyBtn = document.createElement('button');
+                copyBtn.innerHTML = '📋 Copy';
+                copyBtn.onclick = () => {
+                    navigator.clipboard.writeText(codeData.code);
+                    copyBtn.innerHTML = '✓ Copied!';
+                    setTimeout(() => { copyBtn.innerHTML = '📋 Copy'; }, 2000);
                 };
-                bubble.appendChild(ttsBtn);
+                
+                const downloadBtn = document.createElement('button');
+                downloadBtn.innerHTML = '💾 Download';
+                downloadBtn.onclick = () => {
+                    const blob = new Blob([codeData.code], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `code.${codeData.language || 'txt'}`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                };
+                
+                toolbar.appendChild(copyBtn);
+                toolbar.appendChild(downloadBtn);
+                
+                if (isHtmlCode(codeData.code)) {
+                    const previewBtn = document.createElement('button');
+                    previewBtn.innerHTML = '👁️ Preview';
+                    previewBtn.onclick = () => {
+                        const previewFrame = document.getElementById('previewFrame');
+                        const previewModal = document.getElementById('previewModal');
+                        const blob = new Blob([codeData.code], { type: 'text/html' });
+                        const url = URL.createObjectURL(blob);
+                        previewFrame.src = url;
+                        previewModal.classList.add('active');
+                        previewFrame.onload = () => URL.revokeObjectURL(url);
+                    };
+                    toolbar.appendChild(previewBtn);
+                }
+                
+                const textarea = document.createElement('textarea');
+                textarea.value = codeData.code;
+                
+                codeContainer.appendChild(toolbar);
+                codeContainer.appendChild(textarea);
+                bubble.appendChild(codeContainer);
+                
+                // Initialize CodeMirror
+                setTimeout(() => {
+                    const mode = codeData.language === 'html' ? 'htmlmixed' : 
+                                codeData.language === 'css' ? 'css' : 
+                                codeData.language === 'python' ? 'python' : 'javascript';
+                    CodeMirror.fromTextArea(textarea, {
+                        mode: mode,
+                        theme: 'dracula',
+                        readOnly: true,
+                        lineNumbers: true,
+                        lineWrapping: true
+                    });
+                }, 10);
+            } else {
+                // Regular text message
+                bubble.innerHTML = escapeHtml(content).replace(/\n/g, '<br>');
             }
-            
+
+            // Add action buttons for assistant messages
+            if (role === 'assistant') {
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'message-actions';
+                
+                const speakBtn = document.createElement('button');
+                speakBtn.innerHTML = '🔊 Speak';
+                speakBtn.onclick = () => speakText(content);
+                
+                const translateBtn = document.createElement('button');
+                translateBtn.innerHTML = '🌐 Translate to English';
+                translateBtn.onclick = async () => {
+                    translateBtn.innerHTML = '⏳ Translating...';
+                    translateBtn.disabled = true;
+                    try {
+                        const response = await fetch('/api/translate', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ text: content, target: 'english' })
+                        });
+                        const data = await response.json();
+                        if (data.translated) {
+                            // Show translation in a small toast-like message
+                            const translationDiv = document.createElement('div');
+                            translationDiv.style.cssText = 'margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.5); border-radius: 12px; font-size: 0.85rem; border-left: 3px solid #ff6a00;';
+                            translationDiv.innerHTML = `📖 English: ${escapeHtml(data.translated)}`;
+                            bubble.appendChild(translationDiv);
+                            translateBtn.innerHTML = '✓ Translated';
+                            setTimeout(() => {
+                                translateBtn.innerHTML = '🌐 Translate to English';
+                                translateBtn.disabled = false;
+                            }, 3000);
+                        }
+                    } catch (e) {
+                        translateBtn.innerHTML = '❌ Failed';
+                        setTimeout(() => {
+                            translateBtn.innerHTML = '🌐 Translate to English';
+                            translateBtn.disabled = false;
+                        }, 2000);
+                    }
+                };
+                
+                actionsDiv.appendChild(speakBtn);
+                actionsDiv.appendChild(translateBtn);
+                bubble.appendChild(actionsDiv);
+            }
+
             messageDiv.appendChild(avatar);
             messageDiv.appendChild(bubble);
-            
             chatArea.appendChild(messageDiv);
             scrollToBottom();
         }
-        
-        // Escape HTML to prevent XSS
+
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
-        
-        // Typing indicator management
+
         let typingDiv = null;
         function showTypingIndicator() {
             if (typingDiv) return;
@@ -625,40 +828,36 @@
             chatArea.appendChild(typingDiv);
             scrollToBottom();
         }
-        
+
         function hideTypingIndicator() {
             if (typingDiv) {
                 typingDiv.remove();
                 typingDiv = null;
             }
         }
-        
-        // Text-to-Speech using HTTP backend
+
         async function speakText(text) {
-            // Stop any currently playing audio
             if (currentAudio) {
                 currentAudio.pause();
                 currentAudio = null;
             }
             
             try {
-                showStatus('🎵 Generating speech...');
                 const response = await fetch('/api/tts', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: text })
+                    body: JSON.stringify({ text: text, language: currentLanguage })
                 });
                 
-                if (!response.ok) {
-                    throw new Error(`TTS HTTP ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`TTS HTTP ${response.status}`);
                 
                 const data = await response.json();
-                
                 if (data.audio) {
-                    playAudio(data.audio);
-                } else if (data.error) {
-                    console.error('TTS error:', data.error);
+                    const audio = new Audio('data:audio/mp3;base64,' + data.audio);
+                    currentAudio = audio;
+                    audio.play().catch(e => console.error('Audio play error:', e));
+                    audio.onended = () => { currentAudio = null; };
+                } else {
                     fallbackTTS(text);
                 }
             } catch (error) {
@@ -666,43 +865,29 @@
                 fallbackTTS(text);
             }
         }
-        
+
         function fallbackTTS(text) {
-            showStatus('Using browser TTS fallback...');
-            // Fallback browser TTS
             const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'ja-JP';
+            const langMap = {
+                japanese: 'ja-JP',
+                english: 'en-US',
+                swahili: 'sw-KE',
+                spanish: 'es-ES',
+                french: 'fr-FR',
+                german: 'de-DE',
+                chinese: 'zh-CN',
+                korean: 'ko-KR',
+                hindi: 'hi-IN',
+                arabic: 'ar-SA',
+                russian: 'ru-RU',
+                portuguese: 'pt-PT'
+            };
+            utterance.lang = langMap[currentLanguage] || 'en-US';
             utterance.rate = 0.9;
-            utterance.onend = () => showStatus('✓ Done', false);
-            utterance.onerror = () => showStatus('TTS failed', true);
             window.speechSynthesis.speak(utterance);
         }
-        
-        function playAudio(base64Audio) {
-            try {
-                const audio = new Audio('data:audio/mp3;base64,' + base64Audio);
-                currentAudio = audio;
-                audio.onplay = () => showStatus('🔊 Playing...');
-                audio.onended = () => {
-                    currentAudio = null;
-                    showStatus('✓', false);
-                };
-                audio.onerror = (e) => {
-                    console.error('Audio playback error:', e);
-                    showStatus('Audio playback failed', true);
-                    currentAudio = null;
-                };
-                audio.play().catch(e => {
-                    console.error('Audio play error:', e);
-                    showStatus('Cannot play audio', true);
-                });
-            } catch (e) {
-                console.error('Audio creation error:', e);
-                showStatus('Audio error', true);
-            }
-        }
-        
-        // Voice Recording using HTTP POST
+
+        // Voice Recording
         async function startRecording() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -710,14 +895,11 @@
                 audioChunks = [];
                 
                 mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) {
-                        audioChunks.push(event.data);
-                    }
+                    if (event.data.size > 0) audioChunks.push(event.data);
                 };
                 
                 mediaRecorder.onstop = async () => {
                     if (audioChunks.length === 0) {
-                        showStatus('No audio recorded', true);
                         stream.getTracks().forEach(track => track.stop());
                         return;
                     }
@@ -726,26 +908,16 @@
                     const formData = new FormData();
                     formData.append('audio', audioBlob, 'recording.webm');
                     
-                    showStatus('🎤 Processing speech...');
-                    
                     try {
-                        const response = await fetch('/api/stt', {
-                            method: 'POST',
-                            body: formData
-                        });
-                        
+                        const response = await fetch('/api/stt', { method: 'POST', body: formData });
                         const data = await response.json();
                         
                         if (data.success && data.text) {
                             messageInput.value = data.text;
-                            showStatus(`✓ Recognized: "${data.text}"`);
                             await sendMessage();
-                        } else {
-                            showStatus('Could not recognize speech. Please try again.', true);
                         }
                     } catch (error) {
                         console.error('STT error:', error);
-                        showStatus('Speech recognition failed. Please type your message.', true);
                     }
                     
                     stream.getTracks().forEach(track => track.stop());
@@ -755,95 +927,48 @@
                 isRecording = true;
                 voiceBtn.classList.add('recording');
                 voiceBtn.innerHTML = '⏹️';
-                showStatus('🎙️ Recording... Click mic again to stop');
                 
-                // Auto-stop after 10 seconds
-                const autoStopTimeout = setTimeout(() => {
-                    if (isRecording) {
-                        stopRecording();
-                    }
+                setTimeout(() => {
+                    if (isRecording) stopRecording();
                 }, 10000);
-                
-                // Store timeout to clear if stopped manually
-                mediaRecorder._autoStopTimeout = autoStopTimeout;
                 
             } catch (error) {
                 console.error('Microphone error:', error);
-                showStatus('Microphone access denied. Please check permissions.', true);
             }
         }
-        
+
         function stopRecording() {
             if (mediaRecorder && isRecording && mediaRecorder.state === 'recording') {
-                if (mediaRecorder._autoStopTimeout) {
-                    clearTimeout(mediaRecorder._autoStopTimeout);
-                }
                 mediaRecorder.stop();
                 isRecording = false;
                 voiceBtn.classList.remove('recording');
                 voiceBtn.innerHTML = '🎤';
             }
         }
-        
+
         function toggleRecording() {
-            if (isRecording) {
-                stopRecording();
-            } else {
-                startRecording();
-            }
+            if (isRecording) stopRecording();
+            else startRecording();
         }
-        
-        // Auto-resize textarea
+
         function autoResizeTextarea() {
             messageInput.style.height = 'auto';
-            const newHeight = Math.min(messageInput.scrollHeight, 120);
-            messageInput.style.height = newHeight + 'px';
+            messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
         }
-        
-        // Scroll to bottom of chat
+
         function scrollToBottom() {
             requestAnimationFrame(() => {
                 chatArea.scrollTop = chatArea.scrollHeight;
             });
         }
-        
-        // Mode switching
-        function setMode(mode) {
-            currentMode = mode;
-            document.querySelectorAll('.mode-btn').forEach(btn => {
-                if (btn.dataset.mode === mode) {
-                    btn.classList.add('active');
-                } else {
-                    btn.classList.remove('active');
-                }
-            });
-            
-            if (mode === 'japanese') {
-                modeBadge.innerHTML = '🇯🇵 日本語のみ返答';
-                modeBadge.style.borderLeftColor = '#ff6a00';
-                addMessage('🇯🇵 日本語モードが有効になりました。これからはどんな言語で話しかけても、日本語で返答します。', 'assistant');
-            } else {
-                modeBadge.innerHTML = '💬 通常モード (多言語)';
-                modeBadge.style.borderLeftColor = '#555';
-                addMessage('💬 Normal mode enabled. I will respond in your language.', 'assistant');
-            }
+
+        function closePreview() {
+            const modal = document.getElementById('previewModal');
+            const frame = document.getElementById('previewFrame');
+            modal.classList.remove('active');
+            frame.src = '';
         }
-        
-        // Check server health on load
-        async function checkServerHealth() {
-            try {
-                const response = await fetch('/health');
-                if (response.ok) {
-                    console.log('Server is healthy');
-                } else {
-                    showStatus('Server connection OK but health check failed', true);
-                }
-            } catch (error) {
-                console.warn('Server health check failed:', error);
-                showStatus('Connected to server', false);
-            }
-        }
-        
+
         // Event Listeners
         sendBtn.addEventListener('click', sendMessage);
         voiceBtn.addEventListener('click', toggleRecording);
@@ -857,25 +982,14 @@
         
         messageInput.addEventListener('input', autoResizeTextarea);
         
-        document.querySelectorAll('.mode-btn').forEach(btn => {
-            btn.addEventListener('click', () => setMode(btn.dataset.mode));
-        });
-        
-        // Clean up on page unload
         window.addEventListener('beforeunload', () => {
-            if (mediaRecorder && isRecording) {
-                mediaRecorder.stop();
-            }
-            if (currentAudio) {
-                currentAudio.pause();
-            }
+            if (mediaRecorder && isRecording) mediaRecorder.stop();
+            if (currentAudio) currentAudio.pause();
         });
+
+        window.closePreview = closePreview;
         
-        // Initialize
         autoResizeTextarea();
-        checkServerHealth();
-        
-        console.log('HenAi initialized with session ID:', sessionId);
     </script>
 </body>
 </html>
