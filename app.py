@@ -352,6 +352,10 @@ def clear_conversation():
         conversations[session_id] = []
     return jsonify({'success': True})
 
+@app.route('/health')
+def health():
+    return {"status": "ok"}, 200
+
 # ============= START APPLICATION =============
 
 if __name__ == '__main__':
