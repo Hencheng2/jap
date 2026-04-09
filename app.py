@@ -6,6 +6,7 @@ import os
 import base64
 import time
 import logging
+import signal
 from datetime import datetime
 from models import (
     query_ai_with_fallback,
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'henai-multilingual-secret-key')
+app.config['TIMEOUT'] = 120  # Increase timeout
 CORS(app)
 
 # Store conversation history per session with full context
@@ -72,15 +74,20 @@ def chat():
         'timestamp': datetime.now().isoformat()
     })
     
-    # Get AI response in target language
-    response_text = get_multilingual_response(
-        user_message=message,
-        target_language=target_language,
-        conversation_history=conversations[session_id][:-1]
-    )
-    
-    # Clean response of markdown
-    response_text = clean_markdown(response_text)
+    try:
+        # Get AI response in target language with timeout
+        response_text = get_multilingual_response(
+            user_message=message,
+            target_language=target_language,
+            conversation_history=conversations[session_id][:-1]
+        )
+        
+        # Clean response of markdown
+        response_text = clean_markdown(response_text)
+        
+    except Exception as e:
+        logger.error(f"Error generating response: {e}")
+        response_text = get_fallback_response(target_language)
     
     # Add AI response to history
     conversations[session_id].append({
@@ -99,6 +106,24 @@ def chat():
         'session_id': session_id,
         'language': target_language
     })
+
+def get_fallback_response(language):
+    """Return fallback response without API call"""
+    fallbacks = {
+        'japanese': '申し訳ありません。現在応答を生成できません。もう一度お試しください。',
+        'english': "I'm having trouble connecting right now. Please try again in a moment.",
+        'swahili': "Nina shida kuunganisha kwa sasa. Tafadhali jaribu tena.",
+        'spanish': "Estoy teniendo problemas para conectar. Por favor, inténtalo de nuevo.",
+        'french': "J'ai des problèmes de connexion. Veuillez réessayer.",
+        'german': "Ich habe gerade Verbindungsprobleme. Bitte versuchen Sie es erneut.",
+        'chinese': "我现在连接有问题。请稍后再试。",
+        'korean': "지금 연결에 문제가 있습니다. 잠시 후 다시 시도해주세요.",
+        'hindi': "मुझे अभी कनेक्ट करने में समस्या हो रही है। कृपया पुनः प्रयास करें।",
+        'arabic': "أواجه مشكلة في الاتصال الآن. يرجى المحاولة مرة أخرى.",
+        'russian': "У меня проблемы с подключением. Пожалуйста, попробуйте еще раз.",
+        'portuguese': "Estou tendo problemas de conexão. Por favor, tente novamente."
+    }
+    return fallbacks.get(language, fallbacks['english'])
 
 def clean_markdown(text):
     """Remove markdown formatting from text"""
