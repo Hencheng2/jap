@@ -1,5 +1,4 @@
-# models.py - AI Models and Functionality for HenAi (Render + APK Ready)
-# API key is read from environment variable - secure for deployment
+# models.py - AI Models with Multilingual Support
 
 import os
 import re
@@ -9,25 +8,17 @@ import subprocess
 import sys
 import json
 
-# ============= API KEY FROM ENVIRONMENT =============
-
-# Get API key from environment variable (set on Render)
+# Get API key from environment variable
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY', '')
 
-# Warn if no API key found
 if not OPENROUTER_API_KEY:
     print("⚠️ WARNING: OPENROUTER_API_KEY not set in environment variables")
-    print("   Please set it on Render or locally for the app to work")
 
-# ============= ANDROID COMPATIBILITY SETUP =============
-
-# Ensure temp directory exists on Android
+# Android compatibility
 if hasattr(sys, 'getandroidtempdir'):
     TEMP_DIR = sys.getandroidtempdir()
 else:
     TEMP_DIR = tempfile.gettempdir()
-
-# ============= AI CORE FUNCTIONS =============
 
 def get_available_models():
     """Fetch available free models from OpenRouter"""
@@ -56,152 +47,15 @@ def get_available_models():
         "nvidia/nemotron-3-super-120b-a12b:free",
         "minimax/minimax-m2.5:free",
         "microsoft/phi-3.5-mini-128k-instruct:free",
-        "stepfun/step-3.5-flash:free",
-        "arcee-ai/trinity-large-preview:free",
-        "google/gemini-2.0-flash-exp:free",  
+        "google/gemini-2.0-flash-exp:free",
         "openrouter/free"
     ]
 
-
-def extract_code_from_response(response_text):
-    """Extract only the code from the response, removing reasoning"""
-    if not response_text:
-        return response_text
-    
-    # Remove markdown code blocks if present
-    code_match = re.search(r'```(?:html|css|javascript|js|python)?\n(.*?)```', response_text, re.DOTALL)
-    if code_match:
-        return code_match.group(1).strip()
-    
-    # Look for HTML starting with <!DOCTYPE
-    html_match = re.search(r'<!DOCTYPE html>.*', response_text, re.DOTALL | re.IGNORECASE)
-    if html_match:
-        return html_match.group(0).strip()
-    
-    # Look for HTML starting with <html
-    html_match = re.search(r'<html.*?>.*?</html>', response_text, re.DOTALL | re.IGNORECASE)
-    if html_match:
-        return html_match.group(0).strip()
-    
-    # If it contains HTML tags, return as is
-    if re.search(r'<[a-z].*?>', response_text, re.IGNORECASE):
-        return response_text
-    
-    # If it contains CSS
-    if re.search(r'\{[^}]+\}', response_text) and re.search(r'[a-z-]+\s*:', response_text):
-        return response_text
-    
-    # If it contains JavaScript
-    if re.search(r'function\s*\(|const\s+|let\s+|var\s+|=>', response_text):
-        return response_text
-    
-    # Remove any lines that look like reasoning
-    lines = response_text.split('\n')
-    filtered_lines = []
-    in_code = False
-    
-    for line in lines:
-        # Skip lines that are JSON objects
-        if line.strip().startswith('{"role"'):
-            continue
-        # Skip lines that are reasoning indicators
-        if 'reasoning_content' in line or '"tool_calls"' in line:
-            continue
-        # Skip lines that are just thinking phrases
-        if not in_code and any(phrase in line.lower() for phrase in [
-            'i will', 'let me', 'first,', 'we need', 'the code will',
-            'here is', 'here\'s', 'below is', 'this will', 'we can',
-            'i think', 'i should', 'i need to', 'the user', 'they want',
-            'maybe', 'perhaps', 'let\'s', 'we should', 'we could'
-        ]):
-            continue
-        # If we see code indicators, we're in code
-        if re.search(r'<[a-z].*?>|function|const|let|var|{', line):
-            in_code = True
-            filtered_lines.append(line)
-        elif in_code:
-            filtered_lines.append(line)
-    
-    result = '\n'.join(filtered_lines).strip()
-    
-    # If we filtered everything out, return original
-    if len(result) < 50:
-        return response_text
-    
-    return result
-
-
-def call_pollinations_ai(messages, stream=False):
-    """Call Pollinations.ai API for NON-CODE requests only (conversations, explanations)"""
-    try:
-        # System prompt for personality
-        system_msg = {
-            "role": "system", 
-            "content": """You are HenAi, an expert AI assistant created by NexusCraft. 
-When asked about your name, identity, or creator, respond with: 
-'My name is HenAi, I'm an AI assistant created by NexusCraft, and I'm glad to be helping you! 😊 
-Is there anything else you'd like to know, or anything else I can assist with today?'
-
-IMPORTANT RULES:
-1. When answering questions, be concise and direct
-2. Never include reasoning or thinking in your responses
-3. Maintain context from the full conversation history
-4. Be helpful, friendly, and engaging
-
-Remember: Your response should be natural and conversational."""
-        }
-        
-        url = "https://text.pollinations.ai/"
-        
-        # Prepare payload with ALL messages for context
-        payload = {
-            "messages": [system_msg] + messages,
-            "model": "openai",
-            "stream": stream,
-            "temperature": 0.7,
-            "max_tokens": 4000
-        }
-        
-        if stream:
-            response = requests.post(url, json=payload, stream=True, timeout=60)
-            response.raise_for_status()
-            
-            def generate():
-                full_response = ""
-                for line in response.iter_lines():
-                    if line:
-                        try:
-                            text = line.decode('utf-8')
-                            # Skip any JSON metadata lines
-                            if not any(skip in text.lower() for skip in ['{"role"', 'reasoning', 'tool_calls']):
-                                full_response += text
-                                yield f"data: {json.dumps({'content': text})}\n\n"
-                        except:
-                            continue
-                yield f"data: {json.dumps({'done': True})}\n\n"
-            
-            return generate()
-        else:
-            response = requests.post(url, json=payload, timeout=60)
-            response.raise_for_status()
-            
-            raw_response = response.text.strip()
-            
-            # Clean the response to remove reasoning
-            cleaned_response = extract_code_from_response(raw_response)
-            
-            return cleaned_response
-            
-    except Exception as e:
-        print(f"❌ Pollinations.ai error: {e}")
-        return None
-
-
-def query_openrouter(prompt, context=None, is_code_generation=False, force_japanese=False):
-    """Query OpenRouter with full context - USED FOR ALL CODE GENERATION"""
+def query_openrouter(prompt, context=None, target_language='japanese'):
+    """Query OpenRouter with full context"""
     if not OPENROUTER_API_KEY:
-        print("❌ OpenRouter API key missing. Cannot make API call.")
-        return "I'm having trouble connecting to my AI service right now. Please check the configuration."
+        print("❌ OpenRouter API key missing")
+        return None
     
     try:
         url = "https://openrouter.ai/api/v1/chat/completions"
@@ -212,80 +66,104 @@ def query_openrouter(prompt, context=None, is_code_generation=False, force_japan
             "X-Title": "HenAi"
         }
 
-        messages = []
+        # Language-specific system prompts
+        language_prompts = {
+            'japanese': """あなたはHenAiという名前のAIアシスタントです。以下のルールに従ってください：
+1. 必ず日本語のみで応答してください
+2. ユーザーがどの言語で話しかけても日本語で返答してください
+3. 自然で丁寧な日本語を使用してください
+4. コードを生成する場合は、完全で実行可能なコードを提供してください
+5. マークダウン記法（*、#、**など）は使用しないでください""",
 
-        # Enhanced system prompt based on request type
-        is_title_gen = False
-        if prompt and prompt.startswith("Based on this conversation, generate a very short title"):
-            is_title_gen = True
-        
-        if is_code_generation:
-            system_prompt = """You are an expert AI coding assistant named HenAi created by NexusCraft.
+            'english': """You are HenAi, an AI assistant. Follow these rules:
+1. Always respond in English
+2. Use natural, conversational English
+3. Provide complete, working code when generating code
+4. Do not use markdown formatting (*, #, **, etc.)""",
 
-CRITICAL RULES FOR CODE GENERATION:
-1. ALWAYS provide COMPLETE, FULLY FUNCTIONAL code - never abbreviate or use placeholders like "// rest of code" or "..."
-2. Generate AT LEAST 500 lines of code for any substantial project
-3. Include ALL necessary components: imports, functions, classes, error handling, and comments
-4. For HTML/CSS/JS projects, create complete, production-ready code with proper styling
-5. Use modern best practices and design patterns
-6. Include comprehensive comments explaining key sections
-7. Ensure the code is immediately runnable/usable without modifications
-8. If generating a web app, include responsive design, proper meta tags, and complete styling
-9. If asked your name say you are HenAi Assistant created by NexusCraft
+            'swahili': """Wewe ni HenAi, msaidizi wa AI. Fuata sheria hizi:
+1. Jibu kwa Kiswahili tu
+2. Tumia Kiswahili cha kawaida na cha asili
+3. Toa code kamili inayofanya kazi wakati wa kutengeneza code
+4. Usitumie muundo wa markdown (*, #, **, nk.)""",
 
-Your code should be enterprise-grade, well-structured, and ready for production use."""
-        elif force_japanese:
-            system_prompt = """あなたは日本語のみで応答するAIアシスタント「HenAi」です。NexusCraftによって作成されました。
+            'spanish': """Eres HenAi, un asistente de IA. Sigue estas reglas:
+1. Responde siempre en español
+2. Usa un español natural y conversacional
+3. Proporciona código completo y funcional al generar código
+4. No uses formato markdown (*, #, **, etc.)""",
 
-厳守すべきルール：
-1. 絶対に日本語のみで応答してください。他の言語は一切使用しないでください。
-2. ユーザーが英語、スワヒリ語、またはその他の言語で話しかけても、必ず日本語で返答してください。
-3. 自然で流暢な日本語を使用してください。
-4. あなたの名前や作成者について尋ねられたら：「私の名前はHenAiです。NexusCraftによって作成されたAIアシスタントです。お手伝いできて嬉しいです！😊」と日本語で答えてください。
-5. 簡潔で役立つ回答を心がけてください。
+            'french': """Tu es HenAi, un assistant IA. Suis ces règles :
+1. Réponds toujours en français
+2. Utilise un français naturel et conversationnel
+3. Fournis un code complet et fonctionnel lors de la génération de code
+4. N'utilise pas de formatage markdown (*, #, **, etc.)""",
 
-Remember: ONLY JAPANESE. NO EXCEPTIONS."""
-        elif is_title_gen:
-            system_prompt = "You are a title generator. Generate ONLY the title, maximum 5 words, no explanations, no quotes, no extra text."
-        else:
-            system_prompt = """You are a helpful AI assistant named HenAi created by NexusCraft. 
-When asked about your name, identity, or creator, respond with: 
-'My name is HenAi, I'm an AI assistant created by NexusCraft, and I'm glad to be helping you! 😊 
-Is there anything else you'd like to know, or anything else I can assist with today?'
+            'german': """Du bist HenAi, ein KI-Assistent. Befolge diese Regeln:
+1. Antworte immer auf Deutsch
+2. Verwende natürliches, konversationelles Deutsch
+3. Liefere vollständigen, funktionierenden Code bei Code-Generierung
+4. Verwende keine Markdown-Formatierung (*, #, **, etc.)""",
 
-Otherwise, provide helpful, contextually relevant responses using the full conversation history. 
-Maintain context from the entire conversation, not just recent messages."""
+            'chinese': """你是HenAi，一个AI助手。请遵守以下规则：
+1. 始终用中文回复
+2. 使用自然、对话式的中文
+3. 生成代码时提供完整可运行的代码
+4. 不要使用markdown格式（*、#、**等）""",
 
-        messages.append({"role": "system", "content": system_prompt})
+            'korean': """당신은 HenAi, AI 어시스턴트입니다. 다음 규칙을 따르세요:
+1. 항상 한국어로 응답하세요
+2. 자연스러운 대화체 한국어를 사용하세요
+3. 코드 생성 시 완전하고 작동 가능한 코드를 제공하세요
+4. 마크다운 형식(*, #, ** 등)을 사용하지 마세요""",
+
+            'hindi': """आप HenAi, एक AI सहायक हैं। इन नियमों का पालन करें:
+1. हमेशा हिंदी में जवाब दें
+2. प्राकृतिक, संवादात्मक हिंदी का उपयोग करें
+3. कोड बनाते समय पूर्ण, काम करने वाला कोड प्रदान करें
+4. मार्कडाउन फ़ॉर्मेटिंग (*, #, **, आदि) का उपयोग न करें""",
+
+            'arabic': """أنت HenAi، مساعد ذكاء اصطناعي. اتبع هذه القواعد:
+1. قم بالرد دائمًا باللغة العربية
+2. استخدم اللغة العربية الطبيعية والمحادثة
+3. قدم كودًا كاملاً وقابلاً للعمل عند إنشاء الكود
+4. لا تستخدم تنسيق markdown (*, #, **، إلخ)""",
+
+            'russian': """Ты HenAi, AI-ассистент. Следуй этим правилам:
+1. Всегда отвечай на русском языке
+2. Используй естественный, разговорный русский
+3. Предоставляй полный, рабочий код при генерации кода
+4. Не используй markdown-форматирование (*, #, **, и т.д.)""",
+
+            'portuguese': """Você é HenAi, um assistente de IA. Siga estas regras:
+1. Responda sempre em português
+2. Use português natural e conversacional
+3. Forneça código completo e funcional ao gerar código
+4. Não use formatação markdown (*, #, **, etc.)"""
+        }
+
+        system_prompt = language_prompts.get(target_language, language_prompts['english'])
+
+        messages = [{"role": "system", "content": system_prompt}]
 
         if context:
-            # Use full context
-            for ctx_msg in context:
+            # Use full conversation context
+            for ctx_msg in context[-20:]:  # Last 20 messages for context
                 messages.append(ctx_msg)
 
         messages.append({"role": "user", "content": prompt})
 
         models = get_available_models()
-        print(f"  Available free models: {models}")
-
-        # Determine max_tokens based on request type
-        if is_code_generation:
-            max_tokens = 8000
-        elif is_title_gen:
-            max_tokens = 50
-        else:
-            max_tokens = 4000
 
         for model in models:
             try:
-                print(f"  Trying model: {model}")
-                temperature = 0.3 if is_title_gen else (0.5 if is_code_generation else 0.7)
+                print(f"  Trying model: {model} for language: {target_language}")
                 
                 data = {
                     "model": model,
                     "messages": messages,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens
+                    "temperature": 0.7,
+                    "max_tokens": 4000
                 }
 
                 response = requests.post(url, json=data, headers=headers, timeout=60)
@@ -313,387 +191,55 @@ Maintain context from the entire conversation, not just recent messages."""
         print(f"OpenRouter error: {e}")
         return None
 
+def get_multilingual_response(user_message, target_language='japanese', conversation_history=None):
+    """
+    Get response in target language for any input language.
+    """
+    print(f"🌐 Multilingual Mode - Target: {target_language}, Message: {user_message[:50]}...")
+    
+    # Create prompt for AI
+    prompt = f"""User message: {user_message}
 
-def query_ai_with_fallback(prompt, context=None, is_code_generation=False, force_japanese=False):
-    """
-    Query AI with appropriate service:
-    - Code generation: ONLY OpenRouter (Pollinations is NOT used)
-    - Non-code requests: Pollinations.ai first, then OpenRouter fallback
-    - Japanese mode: Force Japanese responses only
-    """
-    print(f"🤖 AI Request - Code Generation: {is_code_generation}, Japanese Mode: {force_japanese}")
+Please respond in {target_language} naturally and conversationally. 
+Keep your response helpful, clear, and appropriate for the conversation context.
+Do not use any markdown formatting like *, #, **, etc.
+Just provide plain text response in {target_language}."""
     
-    # For code generation requests - ONLY use OpenRouter
-    if is_code_generation:
-        print("🔄 Using OpenRouter for code generation...")
-        response = query_openrouter(prompt, context, is_code_generation, force_japanese)
-        if response:
-            print("✅ OpenRouter code generation successful")
-            return response
-        else:
-            print("❌ OpenRouter code generation failed")
-            return f"I'm having trouble generating the code right now. Please try again or provide more details about what you need."
+    # Get AI response
+    response = query_openrouter(
+        prompt=prompt,
+        context=conversation_history,
+        target_language=target_language
+    )
     
-    # For Japanese mode, skip Pollinations (it may not support Japanese-only well)
-    if force_japanese:
-        print("🔄 Japanese mode - using OpenRouter directly...")
-        response = query_openrouter(prompt, context, is_code_generation, force_japanese)
-        if response:
-            print("✅ OpenRouter Japanese response successful")
-            return response
-        else:
-            return "申し訳ありません。現在応答を生成できません。もう一度お試しください。"
-    
-    # For NON-CODE requests (general chat, explanations, etc.) - use Pollinations.ai first
+    if response:
+        return response
     else:
-        # First try Pollinations.ai (faster for conversations)
-        print("🔄 Trying Pollinations.ai for conversation...")
-        messages = []
-        if context:
-            messages = context
-        messages.append({"role": "user", "content": prompt})
-        response = call_pollinations_ai(messages)
-        if response:
-            print("✅ Pollinations.ai conversation successful")
-            return response
-        
-        # If Pollinations fails, fallback to OpenRouter
-        print("⚠️ Pollinations.ai failed, falling back to OpenRouter...")
-        response = query_openrouter(prompt, context, is_code_generation, force_japanese)
-        if response:
-            print("✅ OpenRouter conversation successful")
-            return response
-    
-    # Ultimate fallback
-    print("❌ Both AI services failed")
-    return f"I'll help you with: {prompt}\n\nPlease provide more details so I can assist you better."
-
-
-def generate_chat_title(messages):
-    """Generate an intelligent title based on conversation context (max 5 words)"""
-    try:
-        # Extract the conversation context for title generation
-        context_text = ""
-        for msg in messages[-6:]:  # Look at last 6 messages for context
-            if msg.get('role') == 'user':
-                context_text += msg.get('content', '') + " "
-        
-        if not context_text.strip():
-            # Fallback to first message if no context
-            for msg in messages:
-                if msg.get('role') == 'user':
-                    context_text = msg.get('content', '')
-                    break
-        
-        # Create a prompt for title generation
-        title_prompt = f"""Based on this conversation, generate a very short title (maximum 5 words). 
-        The title should capture the main topic or purpose of the conversation. 
-        Return ONLY the title, nothing else.
-        
-        Conversation context: {context_text[:500]}"""
-        
-        # Query AI for title generation (NOT code generation)
-        title_response = query_ai_with_fallback(title_prompt, context=None, is_code_generation=False)
-        
-        if title_response:
-            # Clean up the title - ensure max 5 words
-            words = title_response.strip().split()
-            if len(words) > 5:
-                title = ' '.join(words[:5])
-            else:
-                title = title_response.strip()
-            
-            # Remove any quotes or extra punctuation
-            title = title.strip('"\'').strip()
-            
-            # Ensure title is not empty
-            if title and len(title) > 0:
-                return title[:50]  # Cap at 50 chars for safety
-        
-        # Fallback to first user message if AI title generation fails
-        for msg in messages:
-            if msg.get('role') == 'user':
-                title = msg.get('content', '')[:40]
-                if len(msg.get('content', '')) > 40:
-                    title += "..."
-                return title
-        
-        return "New Chat"
-        
-    except Exception as e:
-        print(f"Error generating AI title: {e}")
-        # Fallback to first user message
-        for msg in messages:
-            if msg.get('role') == 'user':
-                title = msg.get('content', '')[:40]
-                if len(msg.get('content', '')) > 40:
-                    title += "..."
-                return title
-        return "New Chat"
-
-
-def is_code_generation_request(message):
-    """
-    Detect if the message is asking for code generation.
-    Returns True only for explicit code generation requests.
-    """
-    message_lower = message.lower()
-    
-    # First, check for file analysis/summary requests - these are NOT code generation
-    file_analysis_phrases = [
-        'summarize', 'explain', 'what is', 'tell me about', 'describe',
-        'extract', 'read', 'analyze', 'look at', 'examine', 'review',
-        'content of', 'contains', 'in this file', 'from the file',
-        'document says', 'file says'
-    ]
-    
-    if any(phrase in message_lower for phrase in file_analysis_phrases):
-        return False
-    
-    # Check if message is just asking about the file without code generation intent
-    if len(message.split()) < 10:
-        # Short messages about files are usually not code generation
-        if 'file' in message_lower or 'document' in message_lower or 'content' in message_lower:
-            return False
-    
-    # Code generation keywords - must be explicit about creating code
-    code_keywords = [
-        'create code', 'generate code', 'write code', 'build code', 'develop code',
-        'write a program', 'create a program', 'generate a program',
-        'write a script', 'create a script', 'generate a script',
-        'write a function', 'create a function', 'generate a function',
-        'write a class', 'create a class', 'generate a class',
-        'implement', 'code for', 'program that', 'script that',
-        'function that', 'class that', 'method that'
-    ]
-    
-    # Also check for requests to create specific types of files
-    if any(keyword in message_lower for keyword in code_keywords):
-        return True
-    
-    # Check if message contains both a verb and a technology mention
-    verbs = ['create', 'generate', 'write', 'build', 'develop', 'make', 'code']
-    technologies = ['html', 'css', 'javascript', 'python', 'react', 'vue', 
-                    'angular', 'node', 'express', 'django', 'flask']
-    
-    has_verb = any(verb in message_lower for verb in verbs)
-    has_tech = any(tech in message_lower for tech in technologies)
-    
-    # Only consider it code generation if it's explicitly about creating something
-    if has_verb and has_tech:
-        return True
-    
-    return False
-
-
-# ============= CODE EXECUTION =============
-
-def execute_python_code(code):
-    """Execute Python code safely and return output"""
-    try:
-        temp_file = os.path.join(TEMP_DIR, 'temp_code.py')
-        
-        with open(temp_file, 'w', encoding='utf-8') as f:
-            f.write(code)
-
-        result = subprocess.run(
-            [sys.executable, temp_file],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-
-        try:
-            os.unlink(temp_file)
-        except:
-            pass
-
-        if result.returncode == 0:
-            return {
-                'success': True,
-                'output': result.stdout if result.stdout else "✓ Code executed successfully",
-                'error': None
-            }
-        else:
-            return {
-                'success': False,
-                'output': result.stdout,
-                'error': result.stderr if result.stderr else "Execution failed"
-            }
-    except subprocess.TimeoutExpired:
-        return {'success': False, 'output': '', 'error': '⏱️ Code execution timed out (10 seconds)'}
-    except Exception as e:
-        return {'success': False, 'output': '', 'error': str(e)}
-
-
-# ============= WEB SEARCH AND EXTRACTION =============
-
-def search_web(query):
-    """Generate web search response"""
-    return f"""🔍 **Web Search: "{query}"**
-
-Use Google, DuckDuckGo, or Bing to find information.
-You can also use `/extract [url]` to analyze specific websites.
-
-Search links:
-• Google: https://www.google.com/search?q={query.replace(' ', '+')}
-• Wikipedia: https://en.wikipedia.org/wiki/{query.replace(' ', '_')}"""
-
-
-def extract_web_content(url):
-    """Extract content from a URL"""
-    try:
-        if not url.startswith(('http://', 'https://')):
-            url = 'https://' + url
-
-        response = requests.get(url, timeout=10, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
-        response.raise_for_status()
-
-        text = re.sub(r'<[^>]+>', ' ', response.text)
-        text = re.sub(r'\s+', ' ', text)
-        content = text[:2000] + "..." if len(text) > 2000 else text
-
-        return f"""📄 **Content from {url}**:
-
-{content}"""
-
-    except Exception as e:
-        return f"❌ Error: {str(e)}"
-
-
-# ============= IMAGE ANALYSIS =============
-
-def analyze_image_with_ai(image_content, image_name, photographer="Unknown", ocr_text=""):
-    """Analyze an image using AI with OCR text - returns clean analysis without metadata"""
-    if not OPENROUTER_API_KEY:
-        return "Image analysis is not available. API key is missing."
-    
-    try:
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://henai.onrender.com",
-            "X-Title": "HenAi"
+        # Fallback responses per language
+        fallbacks = {
+            'japanese': '申し訳ありません。応答を生成できませんでした。もう一度お試しください。',
+            'english': "I'm sorry, I couldn't generate a response. Please try again.",
+            'swahili': "Samahani, sikuweza kutoa jibu. Tafadhali jaribu tena.",
+            'spanish': "Lo siento, no pude generar una respuesta. Por favor, inténtalo de nuevo.",
+            'french': "Désolé, je n'ai pas pu générer de réponse. Veuillez réessayer.",
+            'german': "Es tut mir leid, ich konnte keine Antwort generieren. Bitte versuchen Sie es erneut.",
+            'chinese': "抱歉，我无法生成回复。请再试一次。",
+            'korean': "죄송합니다. 응답을 생성할 수 없었습니다. 다시 시도해 주세요.",
+            'hindi': "क्षमा करें, मैं प्रतिक्रिया उत्पन्न नहीं कर सका। कृपया पुनः प्रयास करें।",
+            'arabic': "عذرًا، لم أتمكن من إنشاء رد. يرجى المحاولة مرة أخرى.",
+            'russian': "Извините, не удалось сгенерировать ответ. Пожалуйста, попробуйте еще раз.",
+            'portuguese': "Desculpe, não consegui gerar uma resposta. Por favor, tente novamente."
         }
-        
-        # Create clean prompt without asking for numbered sections
-        if ocr_text and ocr_text.strip() and not ocr_text.startswith("[OCR extraction failed"):
-            analysis_prompt = f"""Analyze the content of this image based on the text extracted from it.
+        return fallbacks.get(target_language, fallbacks['english'])
 
-Extracted text from the image:
-{ocr_text[:2000]}
-
-Please provide a natural, readable analysis of what this image contains. Focus on:
-- What the image shows or represents based on the extracted text
-- Any key information visible in the image
-- The context or purpose of the image
-
-Write in clear, well-formatted paragraphs. Do not use numbered lists, headers, or any markdown formatting. Just provide a natural analysis as if you're describing what you see."""
-        else:
-            # Extract meaningful description from filename
-            name_without_ext = re.sub(r'\.[^.]+$', '', image_name)
-            clean_name = re.sub(r'[_\-\.]', ' ', name_without_ext)
-            clean_name = re.sub(r'\d+', '', clean_name).strip()
-            
-            analysis_prompt = f"""Analyze this image. The filename suggests it may be related to "{clean_name}".
-
-Please provide a natural, readable analysis of:
-- What this image likely shows or represents
-- The subject matter or content
-- Any notable characteristics
-
-Write in clear, well-formatted paragraphs. Do not use numbered lists, headers, or any markdown formatting. Just provide a natural analysis as if you're describing what you see."""
-        
-        messages = [
-            {"role": "system", "content": "You are an expert image analyst. Provide clean, natural analysis without any markdown formatting, headers, or numbered lists. Just write in plain paragraphs."},
-            {"role": "user", "content": analysis_prompt}
-        ]
-        
-        models_to_try = [
-            "google/gemini-2.0-flash-exp:free",
-            "meta-llama/llama-3.2-90b-vision-instruct:free",
-            "microsoft/phi-3.5-mini-128k-instruct:free",
-            "openrouter/free"
-        ]
-        
-        for model in models_to_try:
-            try:
-                data = {
-                    "model": model,
-                    "messages": messages,
-                    "temperature": 0.7,
-                    "max_tokens": 2000
-                }
-                
-                response = requests.post(url, json=data, headers=headers, timeout=60)
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    if 'choices' in result and len(result['choices']) > 0:
-                        print(f"✓ Image analysis successful with {model}")
-                        analysis = result['choices'][0]['message']['content']
-                        
-                        # Clean up any remaining markdown or numbered lists
-                        # Remove markdown headers
-                        analysis = re.sub(r'^#{1,6}\s+.*?\n', '', analysis, flags=re.MULTILINE)
-                        # Remove numbered list patterns like "1. " at start of lines
-                        analysis = re.sub(r'^\d+\.\s+', '', analysis, flags=re.MULTILINE)
-                        # Remove bullet points like "- " or "* " at start of lines
-                        analysis = re.sub(r'^[\*\-]\s+', '', analysis, flags=re.MULTILINE)
-                        # Remove any "**" bold markers
-                        analysis = re.sub(r'\*\*([^*]+)\*\*', r'\1', analysis)
-                        # Remove any remaining markdown artifacts
-                        analysis = re.sub(r'`([^`]+)`', r'\1', analysis)
-                        # Clean up multiple newlines
-                        analysis = re.sub(r'\n{3,}', '\n\n', analysis)
-                        # Trim whitespace
-                        analysis = analysis.strip()
-                        
-                        return analysis
-                elif response.status_code == 429:
-                    print(f"Rate limited on {model}, trying next...")
-                    continue
-                else:
-                    print(f"Model {model} failed with status {response.status_code}")
-                    continue
-                    
-            except Exception as e:
-                print(f"Error with {model}: {e}")
-                continue
-        
-        # Fallback analysis
-        if ocr_text and ocr_text.strip():
-            # Clean OCR text for fallback
-            clean_ocr = re.sub(r'\s+', ' ', ocr_text[:500]).strip()
-            return f"The image contains readable text: {clean_ocr}"
-        else:
-            name_without_ext = re.sub(r'\.[^.]+$', '', image_name)
-            clean_name = re.sub(r'[_\-\.]', ' ', name_without_ext)
-            clean_name = re.sub(r'\d+', '', clean_name).strip()
-            if clean_name:
-                return f"This image appears to be related to {clean_name}."
-            else:
-                return "The image has been processed, but no readable text was detected."
-        
-    except Exception as e:
-        print(f"Error analyzing image: {e}")
-        return None
-
-
-# ============= JAPANESE LEARNING MODULE =============
-
-def translate_text(text, target_lang='ja'):
-    """Translate text to Japanese using Google Translate API"""
+def translate_to_english(text):
+    """Translate text to English using Google Translate API"""
     try:
-        # Using Google Translate API (free)
         url = "https://translate.googleapis.com/translate_a/single"
         params = {
             'client': 'gtx',
             'sl': 'auto',
-            'tl': target_lang,
+            'tl': 'en',
             'dt': 't',
             'q': text
         }
@@ -705,16 +251,15 @@ def translate_text(text, target_lang='ja'):
                 return translated
     except Exception as e:
         print(f"Translation error: {e}")
-    return None
+    return text
 
-
-def text_to_speech_japanese(text):
-    """Convert Japanese text to speech using gTTS (works on Android)"""
+def text_to_speech_multilingual(text, lang_code='ja'):
+    """Convert text to speech using gTTS"""
     try:
         from gtts import gTTS
         import io
         
-        tts = gTTS(text=text, lang='ja', slow=False)
+        tts = gTTS(text=text, lang=lang_code, slow=False)
         audio_bytes = io.BytesIO()
         tts.write_to_fp(audio_bytes)
         audio_bytes.seek(0)
@@ -724,15 +269,13 @@ def text_to_speech_japanese(text):
         print(f"TTS error: {e}")
         return None
 
-
-def speech_to_text_japanese(audio_bytes):
-    """Convert speech to text using Google Speech Recognition (auto-detect language)"""
+def speech_to_text_multilingual(audio_bytes):
+    """Convert speech to text using Google Speech Recognition"""
     try:
         import speech_recognition as sr
         
         recognizer = sr.Recognizer()
         
-        # Save audio bytes to temp file
         temp_audio_path = os.path.join(TEMP_DIR, 'temp_audio.wav')
         
         with open(temp_audio_path, 'wb') as temp_audio:
@@ -741,34 +284,22 @@ def speech_to_text_japanese(audio_bytes):
         with sr.AudioFile(temp_audio_path) as source:
             audio = recognizer.record(source)
         
-        # Clean up temp file
         try:
             os.unlink(temp_audio_path)
         except:
             pass
         
-        # Try to recognize Japanese first
-        try:
-            text = recognizer.recognize_google(audio, language='ja-JP')
-            return text, 'ja'
-        except:
-            pass
+        # Try multiple languages
+        languages = ['ja-JP', 'en-US', 'sw', 'es-ES', 'fr-FR', 'de-DE', 'zh-CN', 'ko-KR', 'hi-IN', 'ar-SA', 'ru-RU', 'pt-PT']
         
-        # Try English
-        try:
-            text = recognizer.recognize_google(audio, language='en-US')
-            return text, 'en'
-        except:
-            pass
+        for lang in languages:
+            try:
+                text = recognizer.recognize_google(audio, language=lang)
+                return text, lang.split('-')[0]
+            except:
+                continue
         
-        # Try Swahili
-        try:
-            text = recognizer.recognize_google(audio, language='sw')
-            return text, 'sw'
-        except:
-            pass
-        
-        # Try auto-detect
+        # Auto-detect as last resort
         try:
             text = recognizer.recognize_google(audio)
             return text, 'auto'
@@ -781,39 +312,35 @@ def speech_to_text_japanese(audio_bytes):
         print(f"Speech recognition error: {e}")
         return None, None
 
+def is_code_generation_request(message):
+    """Detect if message is asking for code generation"""
+    message_lower = message.lower()
+    
+    # File analysis - NOT code generation
+    file_analysis_phrases = ['summarize', 'explain', 'what is', 'tell me about', 'describe']
+    if any(phrase in message_lower for phrase in file_analysis_phrases):
+        return False
+    
+    # Code generation keywords
+    code_keywords = [
+        'create code', 'generate code', 'write code', 'build code',
+        'write a program', 'create a program', 'generate a program',
+        'write a script', 'create a script', 'generate a script',
+        'implement', 'code for', 'program that'
+    ]
+    
+    if any(keyword in message_lower for keyword in code_keywords):
+        return True
+    
+    verbs = ['create', 'generate', 'write', 'build', 'develop', 'make', 'code']
+    technologies = ['html', 'css', 'javascript', 'python', 'react', 'vue', 'angular']
+    
+    has_verb = any(verb in message_lower for verb in verbs)
+    has_tech = any(tech in message_lower for tech in technologies)
+    
+    return has_verb and has_tech
 
-def get_japanese_response(user_message, conversation_history=None):
-    """
-    Get Japanese-only response for any input language.
-    This is the core function for the Japanese learning app.
-    """
-    print(f"🇯🇵 Japanese Mode - Processing: {user_message[:50]}...")
-    
-    # Translate user message to Japanese if it's not already
-    # Detect if it contains Japanese characters
-    has_japanese = any('\u3040' <= c <= '\u30ff' or '\u4e00' <= c <= '\u9fff' for c in user_message)
-    
-    if not has_japanese:
-        # Translate to Japanese for the AI context
-        translated = translate_text(user_message, 'ja')
-        if translated:
-            ai_prompt = f"ユーザーからのメッセージ（元の言語から日本語に翻訳）: {translated}\n\n元のメッセージ: {user_message}\n\nこのメッセージに日本語で自然に返答してください。"
-        else:
-            ai_prompt = f"ユーザーからのメッセージ: {user_message}\n\nこのメッセージに日本語で自然に返答してください。"
-    else:
-        ai_prompt = user_message
-    
-    # Get AI response in Japanese
-    response = query_ai_with_fallback(
-        prompt=ai_prompt,
-        context=conversation_history,
-        is_code_generation=False,
-        force_japanese=True
-    )
-    
-    return response
-
-
-def translate_to_japanese(text):
-    """Public wrapper for translation"""
-    return translate_text(text, 'ja')
+def query_ai_with_fallback(prompt, context=None, is_code_generation=False, force_japanese=False):
+    """Legacy function for compatibility"""
+    target_lang = 'japanese' if force_japanese else 'english'
+    return get_multilingual_response(prompt, target_lang, context)
